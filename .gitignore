@@ -14,3 +14,4 @@ ARREGLO_CS/obj/Debug/net9.0/ARREGLO_CS.AssemblyInfo.cs
 *.editorconfig
 *.cache
 *.pdb
+*.gitignore
