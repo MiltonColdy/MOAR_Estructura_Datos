@@ -1,4 +1,4 @@
-public class ARREGLO_JV {
+public class T1_ARREGLO_JV {
 
     public static void main(String[] args) 
     {
