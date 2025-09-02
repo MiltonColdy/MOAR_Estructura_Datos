@@ -1,4 +1,4 @@
-"Se declara el arreglo :D"
+"Se declara el arreglo"
 arr = [6,7,8,9,10]
 "Se imprime el contenido del arreglo."
 print("El arreglo contiene: ", str(arr))

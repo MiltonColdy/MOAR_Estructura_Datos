@@ -1,6 +1,5 @@
 ﻿using System;
 class ARREGLOS_CSHARP
- 
 {
     static void Main(string[] args)
     {
