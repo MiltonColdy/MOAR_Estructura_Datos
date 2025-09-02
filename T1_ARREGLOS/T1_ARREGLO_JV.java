@@ -1,5 +1,6 @@
+package T1_ARREGLOS;
 public class T1_ARREGLO_JV {
-
+ 
     public static void main(String[] args) 
     {
         // Se dimensiona y declara el arreglo.
