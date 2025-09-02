@@ -2,8 +2,12 @@ public class ARREGLO_JV {
 
     public static void main(String[] args) 
     {
+        // Se dimensiona y declara el arreglo.
         byte[] arr = {6,7,8,9,10};
+    
         System.out.println("El arreglo contiene los números: ");
+
+        //For con el objetivo de imprimir el contenido del arreglo.
         for(byte i = 0; i < 5; i++) 
         {
             if (i <= 3) 
