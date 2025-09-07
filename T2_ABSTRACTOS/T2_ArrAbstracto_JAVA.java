@@ -1,3 +1,4 @@
+package T2_ABSTRACTOS;
 abstract class Alumno {
         private final String nom1; private final String nom2;
         private final String ap1; private final String ap2;
