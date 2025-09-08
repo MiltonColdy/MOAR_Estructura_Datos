@@ -9,9 +9,10 @@ class T3_Recorridos_CS
         int columnas = numeros.GetLength(1);
         for (int i = 0; i < filas; i++)
         {
+            Console.WriteLine("Columna de índice "+i+":");
             for (int j = 0; j < columnas; j++)
             {
-                Console.Write("[" + numeros[i, j] + "]");
+                Console.Write(" [" + numeros[j, i] + "]");
             }
             Console.WriteLine(" ");
         }
