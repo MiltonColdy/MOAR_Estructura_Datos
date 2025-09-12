@@ -39,7 +39,9 @@ int main() {
 
 
     do {
+
     system("cls");
+    cout << "turno" << turno << endl;
     for (short fil = 0; fil <3; fil++) {
         for (short col = 0; col<3; col++) {
             cout << "[" << gatito[fil][col] << "]";
@@ -68,7 +70,7 @@ do {
         } while (eq != "0");
     turno++;
 
-    if (turno >= 6) {
+    if (turno >= 6 and turno <11) {
         for (short i = 0; i < 3; i++){
         if  (gatito[0][i] == gatito[1][i] and gatito[1][i] == gatito[2][i] and gatito[0][i] != " ") {
             ganar = true;
@@ -77,7 +79,7 @@ do {
         if  (gatito[i][0] == gatito[i][1] and gatito[i][1] == gatito[i][2] and gatito[i][0] != " ") {
             ganar = true;
             cout << "¡El jugador de la figura " << gatito[i][0] << " ha ganado! :"<< endl;
-
+        }
                 }
             }
         if  (gatito[0][0] == gatito[1][1] and gatito[1][1] == gatito[2][2] and gatito[0][0] != " ") {
@@ -87,9 +89,12 @@ do {
         if  (gatito[0][2] == gatito[1][1] and gatito[1][1] == gatito[2][0] and gatito[0][2] != " ") {
             ganar = true;
             cout << "¡El jugador de la figura " << gatito[1][1] << " ha ganado! :"<< endl;
-
-                }
         }
+                if (turno > 9 and ganar == false){
+                 cout << "[Empate, no ha habido ganador...]";
+                 turno = 40;
+        }
+
         if (ganar == true ){
     for (short fil = 0; fil <3; fil++) {
         for (short col = 0; col<3; col++) {
@@ -97,6 +102,12 @@ do {
         }
         cout << " " << endl;
     }
+
+}
+
+        if (turno == 40) {
+        break;
         }
     } while (ganar == false);
+
 }
