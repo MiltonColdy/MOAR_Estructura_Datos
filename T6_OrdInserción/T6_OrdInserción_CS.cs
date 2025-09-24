@@ -1,5 +1,5 @@
 ﻿using System;
-class T5_OrdBurbuja_CS
+class T6_OrdInserción_CS
 {
     static void Main(string[] args)
     {
