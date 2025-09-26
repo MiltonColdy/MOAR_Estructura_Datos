@@ -1,6 +1,6 @@
-﻿using System.Runtime.Versioning;
 class PROYECTO3_BatallaNaval
 {
+    // Revisión 26/09/2025 a las 2:44 p.m.
     static void Main(string[] args)
     {
         int c = 1, col = 0, fil = 0, b1 = 2, b2 = 2, ori = 0;
@@ -17,11 +17,16 @@ class PROYECTO3_BatallaNaval
             }
         }
 
-        while (c < 9)
+        while (c < 11)
         {
-            Console.Write("\u001b[2J");
-            if (c % 2 != 0) // Jugador 1
+
+            Console.Clear();
+            if (c <= 5 && c >= 1) // Jugador 1
             {
+                if (b1 == 4 && c == 3)
+                {
+                    b1 = 3;
+                }
                 Console.WriteLine("COLOCAR BARCO DE " + b1 + " DIMENSIONES | JUGADOR 1");
                 for (int i = 0; i < 10; i++)
                 {
@@ -98,9 +103,15 @@ class PROYECTO3_BatallaNaval
                 }
 
                 b1 += 1;
+                
+                    
             }
             else // Jugador 2
             {
+                if (b2 == 4 && c == 8)
+                {
+                    b2 = 3;
+                }
                 Console.WriteLine("COLOCAR BARCO DE " + b2 + " DIMENSIONES | JUGADOR 2");
                 for (int i = 0; i < 10; i++)
                 {
@@ -177,6 +188,8 @@ class PROYECTO3_BatallaNaval
                 }
 
                 b2 += 1;
+                
+                    
             }
 
             c += 1;
@@ -184,6 +197,7 @@ class PROYECTO3_BatallaNaval
 
         while (ganar == false)
         {
+            Console.WriteLine("TABLERO DEL JUGADOR 1: ");
             for (int i = 0; i < 10; i++)
             {
                 if (i < 9)
@@ -197,6 +211,21 @@ class PROYECTO3_BatallaNaval
                 }
                 Console.WriteLine("");
             }
+            Console.WriteLine("TABLERO DEL JUGADOR 2: ");
+            for (int i = 0; i < 10; i++)
+            {
+                if (i < 9)
+                {
+                    Console.Write(" ");
+                }
+                Console.Write(i + 1 + " ");
+                for (int j = 0; j < 10; j++)
+                {
+                    Console.Write("[" + arr2[i, j] + "]");
+                }
+                Console.WriteLine("");
+            }
+            ganar = true;
         }
     }
 
