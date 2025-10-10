@@ -1,16 +1,19 @@
 const readline = require("readline");
 const N = 25;
 const MAX_SALIDAS = 3;
-let laberinto = [];
+readline.emitKeypressEvents(process.stdin);
+process.stdin.setRawMode(true);
+
+let lab = [];
 for(let i=0;i<N;i++){
-    laberinto[i] = [];
+    lab[i] = [];
     for(let j=0;j<N;j++){
-        laberinto[i][j] = "█";
+        lab[i][j] = "█";
     }
 }
 //De esta forma podemos declarar un arreglo, el cual va a estar lleno de cubitos (paredes).
-function generar(x,y) {
-    laberinto[x][y] = " ";
+function generate(x,y) {
+    lab[x][y] = " ";
     let dir = [[-1,0],[1,0],[0,-1],[0,1]];
     dir.sort(() => Math.random()-0.5);
 
@@ -19,37 +22,41 @@ function generar(x,y) {
         let nx = x + ori[0]*2;
         let ny = y + ori[1]*2;
 
-        if (nx > 0 && nx < N-1 && ny > 0 && ny < N-1 && laberinto[nx][ny] == "█") {
-            laberinto[x+ori[0]][y+ori[1]] = " ";
-            generar(nx, ny);
+        if (nx > 0 && nx < N-1 && ny > 0 && ny < N-1 && labo[nx][ny] == "█") {
+            lab[x+ori[0]][y+ori[1]] = " ";
+            generate(nx, ny);
         }
     }
     for (let i = 0; i < N; i++) {
-        laberinto[0][i] = "█";
-        laberinto[24][i] = "█";
-        laberinto[i][0] = "█";
-        laberinto[i][24] = "█";
-    }
-    let pasillos = [];
-        for (let i = 0; i < N-1; i++) {
-            for (let j = 0; j < N-1; j++) {
-                if(laberinto[i][j] == " ") {
-                    pasillos.push([i, j]);
-                }
-        }
+        lab[0][i] = "█";
+        lab[24][i] = "█";
+        lab[i][0] = "█";
+        lab[i][24] = "█";
     }
 
-    let puertas = [];
-    while(puertas.length<MAX_SALIDAS) {
-        let idx = Math.floor(Math.random()*pasillos.length);
-    }
-    laberinto[1][1] = "P";
+    lab[1][1] = "P";
 }
-function dibujar(){
+function draw(){
     console.clear();
     for(let i=0;i<25;i++){
         console.log(laberinto[i].join(""));
     }
 }
-generar(1,1);
-dibujar();
+
+function update() {
+    if (key == "w") {
+        P = P + [-1,0];
+    }
+}
+process.stdin.on('data', (chunk) => {
+    const key = chunk.toString();
+    if (key === '\u0003') process.exit(); // Ctrl+C
+});
+
+process.stdin.on('keyup', (key) => {
+    keys[key.name] = false;
+});
+
+
+generate(1,1);
+draw();
