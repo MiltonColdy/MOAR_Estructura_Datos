@@ -13,6 +13,7 @@ let keys = 0;
 let lab = [];
 let labH = [];
 let hitWall = false;
+let level = 1;
 for (let i = 0; i < N; i++) {
     lab[i] = [];
     for (let j = 0; j < N; j++) {
@@ -27,6 +28,20 @@ for (let i = 0; i < N; i++) {
 }
 let P = [1,1];
 
+function labArr() {
+    for (let i = 0; i < N; i++) {
+    lab[i] = [];
+    for (let j = 0; j < N; j++) {
+        lab[i][j] = "█";
+    }
+}
+for (let i = 0; i < N; i++) {
+    labH[i] = [];
+    for (let j = 0; j < N; j++) {
+        labH[i][j] = "█";
+    }
+}
+}
 //De esta forma podemos declarar un arreglo, el cual va a estar lleno de cubitos (paredes).
 function generate(x,y) {
     lab[x][y] = " ";
@@ -61,28 +76,29 @@ function exit() {
     }
 }
 function exitDoors() {
-    for (let i = 0; i > 25; i++) {
+    let c = 0;
+    for (let i = 0; i < 25; i++) {
         let r = Math.random();
-        if (r < 1/15 && lab[i][0] == "█" && lab[i][1] != "█" && i < MaxExits)
+        if (r < 1/15 && lab[i][0] == "█" && lab[i][1] != "█" && c < MaxExits)
         {
             lab[i][0] = "E";
+            c += 1; 
         }
-        if (r < 1/15 && lab[i][24] == "█" && lab[i][23] != "█" && i < MaxExits)
+        if (r < 1/15 && lab[i][24] == "█" && lab[i][23] != "█" && c < MaxExits)
         {
             lab[i][24] = "E";
+            c += 1;
         }
-        if (r < 1/15 && lab[0][i] == "█" && lab[1][i] == "█" && i < MaxExits)
+        if (r < 1/15 && lab[0][i] == "█" && lab[1][i] != "█" && c < MaxExits)
         {
             lab[0][i] = "E";
+            c += 1;
         }
-        if (r < 1/15 && lab[24][i] == "█" && lab[23][i] == "█" && i < MaxExits)
+        if (r < 1/15 && lab[24][i] == "█" && lab[23][i] != "█" && c < MaxExits)
         {
+            c += 1;
             lab[24][i] = "E";
         }
-        lab[i][0]
-        lab[i][24]
-        lab[0][i]
-        lab[24][i]
     }
 }
 function freeSpace(x, y) {
@@ -126,13 +142,14 @@ function extras() {
             }
         }
     }
-    exitDoors()
+    
 }
 function draw() {
     console.clear();
-    console.log("VIDAS ♥: " + lives);
-    console.log("SALUD †: " + health);
-    console.log("LLAVES ↑: " + keys);
+    console.log("VIDAS " + '\x1b[31m♥\x1b[0m' + ": " + lives);
+    console.log("SALUD " + '\x1b[32m†\x1b[0m' + ": " + health);
+    console.log("LLAVES " + '\x1b[93m↑\x1b[0m' + ": " + keys);
+    console.log("NIVEL " + level);
     for(let i=0;i<25;i++){
         console.log(lab[i].join(""));
     }
@@ -158,48 +175,64 @@ process.stdin.on("keypress", (str, key) => {
         }
     const Ncell = lab[P[0]][P[1]];
 
-    if (P[0] > 23 || Ncell == "█" && key.name === "s")  {
+    if (P[0] > 24 || Ncell == "█" &&  key.name === "s")  {
         P[0] = P[0] - 1;
         hitWall = true;
     }
-    if (P[1] > 23 || Ncell == "█" && key.name === "d") {
+    if (P[1] > 24 || Ncell == "█"  && key.name === "d") {
         P[1] = P[1] - 1;
         hitWall = true;
     }
-    if (P[0] < 1 || Ncell == "█" && key.name === "w" ) {
+    if (P[0] < 0 || Ncell == "█" &&  key.name === "w" ) {
         P[0] = P[0] + 1;
         hitWall = true;
     }
-    if (P[1] < 1 || Ncell == "█" && key.name === "a") {
+    if (P[1] < 0 || Ncell == "█"&&  key.name === "a") {
         P[1] = P[1] + 1;
         hitWall = true;
     }
     check();
     lab[P[0]][P[1]] = "P";
     labH[P[0]][P[1]] = "P";
-    update();
-    //draw();
+    //update();
+    draw();
     });
+}
+function nextLvl() {
+        level += 1;
+        labArr();
+        generate(1,1)
+        P[0] = 1;
+        P[1] = 1;
+        lab[1][1] = "P";
+        labH[1][1] = "P";
+        exit();
+        exitDoors();
+        extras();
+        draw();
 }
 function check() {
     const Ncell = lab[P[0]][P[1]];
     //SALIDAS
     if (Ncell == "S") {
+        lab[P[0]][P[1]] = " ";
+        draw();
+        //update();
+        nextLvl();
+    } 
+    //SALIDAS EXTRA
+    if (Ncell == "E" && keys > 0) {
         lab[P[0]][P[1]] = "P";
-        //draw();
-        update();
+        draw();
+        //update();
         console.log("HAS GANADO OMG :D");
         process.exit();
-    } 
+        nextLvl();
+    }
     //DAÑO Y PÉRDIDA DE VIDAS
     if (Ncell == "T") {
         health -= 25;
     } 
-    if (hitWall == true) {
-        health -= 5;
-        hitWall = false;
-
-    }
     if (health <= 0) {
         health = 100;
         lives -= 1;
@@ -226,7 +259,8 @@ generate(1,1);
 lab[1][1] = "P";
 labH[1][1] = "P";
 exit();
+exitDoors();
 extras();
-//draw();
-update();
+draw();
+//update();
 inpt();
