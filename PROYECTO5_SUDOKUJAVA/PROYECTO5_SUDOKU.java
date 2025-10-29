@@ -6,6 +6,7 @@ public class PROYECTO5_SUDOKU {
     static int diff = 0;
     static int vaciar = 0;
     static int vidas = 3;
+    static boolean salir = false;
     static String usuario;
     static boolean ganar = false;
     static final int N = 9;
@@ -15,13 +16,14 @@ public class PROYECTO5_SUDOKU {
     static int tiempo = 0; // ahora solo un int simple
     static int cursorFila = 0;
     static int cursorCol = 0;
-    
+    static long inicioGeneral = System.currentTimeMillis();
+
     public static void main(String[] args) {
     Scanner scanner = new Scanner(System.in);
     System.out.println("Ingrese su usuario: ");
     usuario = scanner.nextLine();
-
-    while (vidas > 0 && !ganar) {
+    
+    while (vidas > 0 && !ganar && !salir) {
         // Determinar dificultad y celdas a vaciar
         if (nivel >= 0 && nivel <= 4) {
             vaciar = 1;
@@ -40,19 +42,19 @@ public class PROYECTO5_SUDOKU {
             diff = 4;
         }
 
-        // 🔹 Genera sudoku completo para este nivel
+        // Genera sudoku completo para este nivel
         for (int i = 0; i < N; i++)
             Arrays.fill(sudoku[nivel][i], 0);
         generarSudoku();
 
-        // 🔹 Crear puzzle y copia
+        // Crear puzzle y copia
         int[][][] puzzle = crearPuzzle(sudoku, vaciar);
         int[][][] copiaPuzzle = copiarMatriz(puzzle);
 
-        // 🔹 Jugar
+        // Jugar
         jugarSudoku(puzzle, copiaPuzzle);
 
-        // 🔹 Si lo ganó, pasamos al siguiente nivel
+        // Si lo ganó, pasamos al siguiente nivel
         if (ganar) {
             nivel++;
             if (nivel >= 25) {
@@ -139,10 +141,10 @@ public class PROYECTO5_SUDOKU {
     // Interacción en consola
     // -------------------------------
     static void jugarSudoku(int[][][] puzzle, int[][][] originales) {
-        long inicio = System.currentTimeMillis(); // para tiempo real
+        
         while (true) {
             // Calculamos tiempo transcurrido en segundos
-            tiempo = (int) ((System.currentTimeMillis() - inicio) / 1000);
+            tiempo = (int) ((System.currentTimeMillis() - inicioGeneral) / 1000);
 
             // Mostrar sudoku
             imprimirSudokuInteractivo(puzzle, originales);
@@ -157,10 +159,20 @@ public class PROYECTO5_SUDOKU {
             char tecla = entrada.charAt(0);
             
             //SALIR
+            if (tecla == 'Q') {
+                salir = true;
+                break;
+            }
+            //VALIDAR
             if (tecla == 'C') {
                 if (sudokuCompletoYCorrecto(puzzle)) {
                 System.out.println("\n¡Sudoku resuelto correctamente!");
                 ganar = true;
+                if (vidas < 3) {
+                    vidas = 3;
+                } else {
+                    vidas += 1;
+                }
                 return; // <-- salimos para que main() cree el siguiente sudoku
             } else {
                 vidas -= 1;
