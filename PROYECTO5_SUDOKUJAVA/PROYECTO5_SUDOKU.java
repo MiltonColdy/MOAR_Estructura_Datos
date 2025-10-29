@@ -1,5 +1,8 @@
 package PROYECTO5_SUDOKUJAVA;
-
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 public class PROYECTO5_SUDOKU {
     static int nivel = 0;
@@ -22,11 +25,11 @@ public class PROYECTO5_SUDOKU {
     Scanner scanner = new Scanner(System.in);
     System.out.println("Ingrese su usuario: ");
     usuario = scanner.nextLine();
-    
+    inicioGeneral = System.currentTimeMillis();
     while (vidas > 0 && !ganar && !salir) {
         // Determinar dificultad y celdas a vaciar
         if (nivel >= 0 && nivel <= 4) {
-            vaciar = 1;
+            vaciar = 81 - 36;
             diff = 0;
         } else if (nivel >= 5 && nivel <= 9) {
             vaciar = 81 - 32;
@@ -41,7 +44,7 @@ public class PROYECTO5_SUDOKU {
             vaciar = 81 - 17;
             diff = 4;
         }
-
+        
         // Genera sudoku completo para este nivel
         for (int i = 0; i < N; i++)
             Arrays.fill(sudoku[nivel][i], 0);
@@ -59,6 +62,8 @@ public class PROYECTO5_SUDOKU {
             nivel++;
             if (nivel >= 25) {
                 System.out.println("¡Felicidades, completaste todos los niveles!");
+                guardarRecord(usuario, nivel, tiempo);
+                mostrarRecords();
                 break;
             }
             ganar = false; // reseteamos bandera
@@ -301,5 +306,28 @@ public class PROYECTO5_SUDOKU {
             for (int j = 0; j < N; j++)
                 copia[i][j] = Arrays.copyOf(original[i][j], N);
         return copia;
+    }
+    static void guardarRecord(String usuario, int nivel, int tiempo) {
+        try (FileWriter fw = new FileWriter("records_sudoku.txt", true)) {
+            fw.write(usuario + "," + (nivel + 1) + "," + tiempo + "s\n");
+        } catch (IOException e) {
+            System.out.println("Error al guardar el récord: " + e.getMessage());
+        }
+    }
+
+    static void mostrarRecords() {
+        System.out.println("\n=== RÉCORDS ===");
+        try (BufferedReader br = new BufferedReader(new FileReader("records_sudoku.txt"))) {
+            String linea;
+            while ((linea = br.readLine()) != null) {
+                String[] datos = linea.split(",");
+                if (datos.length == 3) {
+                    System.out.printf("Usuario: %-10s | Nivel: %-2s | Tiempo: %s\n",
+                    datos[0], datos[1], datos[2]);
+                }
+            }
+        }   catch (IOException e) {
+                System.out.println("No hay récords guardados aún.");
+            }
     }
 }
