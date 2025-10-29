@@ -1,34 +1,68 @@
 package PROYECTO5_SUDOKUJAVA;
 
 import java.util.*;
-
 public class PROYECTO5_SUDOKU {
-
+    static int nivel = 0;
+    static int diff = 0;
+    static int vaciar = 0;
+    static int vidas = 3;
+    static String usuario;
+    static boolean ganar = false;
     static final int N = 9;
-    static int[][] sudoku = new int[N][N];
+    static int[][][] sudoku = new int[25][N][N];
     static Random rand = new Random();
     static Scanner sc = new Scanner(System.in);
-
-    // Variables para el modo interactivo
+    static int tiempo = 0; // ahora solo un int simple
     static int cursorFila = 0;
     static int cursorCol = 0;
-
+    
     public static void main(String[] args) {
-        // 1. Generar solución completa
+    Scanner scanner = new Scanner(System.in);
+    System.out.println("Ingrese su usuario: ");
+    usuario = scanner.nextLine();
+
+    while (vidas > 0 && !ganar) {
+        // Determinar dificultad y celdas a vaciar
+        if (nivel >= 0 && nivel <= 4) {
+            vaciar = 1;
+            diff = 0;
+        } else if (nivel >= 5 && nivel <= 9) {
+            vaciar = 81 - 32;
+            diff = 1;
+        } else if (nivel >= 10 && nivel <= 14) {
+            vaciar = 81 - 28;
+            diff = 2;
+        } else if (nivel >= 15 && nivel <= 19) {
+            vaciar = 81 - 24;
+            diff = 3;
+        } else if (nivel >= 20 && nivel <= 24) {
+            vaciar = 81 - 17;
+            diff = 4;
+        }
+
+        // 🔹 Genera sudoku completo para este nivel
+        for (int i = 0; i < N; i++)
+            Arrays.fill(sudoku[nivel][i], 0);
         generarSudoku();
-        System.out.println("Sudoku completo:");
-        imprimirSudoku();
 
-        // 2. Crear versión jugable
-        int[][] puzzle = crearPuzzle(sudoku, 45);
-        int[][] copiaPuzzle = copiarMatriz(puzzle); // Guardamos las pistas originales
+        // 🔹 Crear puzzle y copia
+        int[][][] puzzle = crearPuzzle(sudoku, vaciar);
+        int[][][] copiaPuzzle = copiarMatriz(puzzle);
 
-        System.out.println("\nSudoku jugable:");
-        imprimirSudoku(puzzle);
-
-        // 3. Entrar al modo interactivo
+        // 🔹 Jugar
         jugarSudoku(puzzle, copiaPuzzle);
+
+        // 🔹 Si lo ganó, pasamos al siguiente nivel
+        if (ganar) {
+            nivel++;
+            if (nivel >= 25) {
+                System.out.println("¡Felicidades, completaste todos los niveles!");
+                break;
+            }
+            ganar = false; // reseteamos bandera
+        }
     }
+}
 
     // -------------------------------
     // Generación del sudoku completo
@@ -49,25 +83,24 @@ public class PROYECTO5_SUDOKU {
 
         for (int num : numeros) {
             if (esValido(fila, col, num)) {
-                sudoku[fila][col] = num;
+                sudoku[nivel][fila][col] = num;
                 if (llenarCelda(siguienteFila, siguienteCol)) return true;
-                sudoku[fila][col] = 0;
+                sudoku[nivel][fila][col] = 0;
             }
         }
         return false;
     }
 
     static boolean esValido(int fila, int col, int num) {
-        for (int i = 0; i < N; i++) {
-            if (sudoku[fila][i] == num || sudoku[i][col] == num)
+        for (int i = 0; i < N; i++)
+            if (sudoku[nivel][fila][i] == num || sudoku[nivel][i][col] == num)
                 return false;
-        }
 
         int startRow = fila - fila % 3;
         int startCol = col - col % 3;
         for (int i = 0; i < 3; i++)
             for (int j = 0; j < 3; j++)
-                if (sudoku[startRow + i][startCol + j] == num)
+                if (sudoku[nivel][startRow + i][startCol + j] == num)
                     return false;
 
         return true;
@@ -76,170 +109,185 @@ public class PROYECTO5_SUDOKU {
     // -------------------------------
     // Creación del puzzle jugable
     // -------------------------------
-    static int[][] crearPuzzle(int[][] completo, int celdasAQuitar) {
-        int[][] puzzle = copiarMatriz(completo);
+    static int[][][] crearPuzzle(int[][][] completo, int celdasAQuitar) {
+        
+        int[][][] puzzle = copiarMatriz(completo);
 
         int eliminadas = 0;
-        while (eliminadas < celdasAQuitar) {
-            int fila = rand.nextInt(9);
-            int col = rand.nextInt(9);
+        int intentos = 0; // evita bucles infinitos
+        while (eliminadas < celdasAQuitar && intentos < 500) {
+            int fila = rand.nextInt(N);
+            int col = rand.nextInt(N);
+            intentos++;
 
-            if (puzzle[fila][col] != 0) {
-                int backup = puzzle[fila][col];
-                puzzle[fila][col] = 0;
+            if (puzzle[nivel][fila][col] != 0) {
+                int backup = puzzle[nivel][fila][col];
+                puzzle[nivel][fila][col] = 0;
 
-                // Si tiene más de una solución, deshacer
-                if (contarSoluciones(copiarMatriz(puzzle)) != 1) {
-                    puzzle[fila][col] = backup;
-                } else {
+                if (contarSoluciones(copiarMatriz(puzzle)) == 1) {
                     eliminadas++;
+                } else {
+                    puzzle[nivel][fila][col] = backup;
                 }
             }
         }
+        System.out.println("Celdas eliminadas: " + eliminadas);
         return puzzle;
     }
 
     // -------------------------------
     // Interacción en consola
     // -------------------------------
-    static void jugarSudoku(int[][] puzzle, int[][] originales) {
+    static void jugarSudoku(int[][][] puzzle, int[][][] originales) {
+        long inicio = System.currentTimeMillis(); // para tiempo real
         while (true) {
-            imprimirSudokuInteractivo(puzzle, originales);
+            // Calculamos tiempo transcurrido en segundos
+            tiempo = (int) ((System.currentTimeMillis() - inicio) / 1000);
 
-            System.out.println("\nUsa W/A/S/D para moverte, 1–9 para escribir, 0 para borrar.");
+            // Mostrar sudoku
+            imprimirSudokuInteractivo(puzzle, originales);
+            System.out.println("Tiempo: " + tiempo + "s");
+
+            System.out.println("\nUsa W/A/S/D para moverte, 1-9 para escribir, 0 para borrar.");
             System.out.println("Presiona C para comprobar, Q para salir.");
             System.out.print("→ ");
             String entrada = sc.nextLine().trim().toUpperCase();
 
             if (entrada.isEmpty()) continue;
             char tecla = entrada.charAt(0);
-
-            if (tecla == 'Q') break;
-            else if (tecla == 'C') {
-                if (sudokuCompletoYCorrecto(puzzle))
-                    System.out.println("\n🎉 ¡Sudoku resuelto correctamente!");
-                else
-                    System.out.println("\n❌ Aún hay errores o casillas vacías.");
-           
-            } else if (tecla == 'W' && cursorFila > 0) cursorFila--;
-            else if (tecla == 'S' && cursorFila < N - 1) cursorFila++;
-            else if (tecla == 'A' && cursorCol > 0) cursorCol--;
-            else if (tecla == 'D' && cursorCol < N - 1) cursorCol++;
-            else if (Character.isDigit(tecla)) {
-                int num = tecla - '0';
-                if (originales[cursorFila][cursorCol] == 0) {
-                    puzzle[cursorFila][cursorCol] = num;
-                } else {
-                    System.out.println("⚠️ Esa celda es una pista y no se puede cambiar.");
-                }
+            
+            //SALIR
+            if (tecla == 'C') {
+                if (sudokuCompletoYCorrecto(puzzle)) {
+                System.out.println("\n¡Sudoku resuelto correctamente!");
+                ganar = true;
+                return; // <-- salimos para que main() cree el siguiente sudoku
+            } else {
+                vidas -= 1;
+                System.out.println("\nAún hay errores o casillas vacías.");
             }
+            }   else if (tecla == 'W' && cursorFila > 0) cursorFila--;
+                else if (tecla == 'S' && cursorFila < N - 1) cursorFila++;
+                else if (tecla == 'A' && cursorCol > 0) cursorCol--;
+                else if (tecla == 'D' && cursorCol < N - 1) cursorCol++;
+                else if (Character.isDigit(tecla)) {
+                int num = tecla - '0';
+            if (originales[nivel][cursorFila][cursorCol] == 0) {
+                puzzle[nivel][cursorFila][cursorCol] = num;
+            } else {
+                System.out.println("Esa celda es una pista y no se puede cambiar.");
+            }
+}   
+            }
+            
         }
-        System.out.println("\nJuego terminado.");
-    }
+        
+    
 
-    static boolean sudokuCompletoYCorrecto(int[][] grid) {
+    // -------------------------------
+    // Validación y utilidades
+    // -------------------------------
+    static boolean sudokuCompletoYCorrecto(int[][][] grid) {
         for (int fila = 0; fila < N; fila++) {
             for (int col = 0; col < N; col++) {
-                int num = grid[fila][col];
-                if (num == 0) return false; // incompleto
-                grid[fila][col] = 0;
+                int num = grid[nivel][fila][col];
+                if (num == 0) return false;
+                grid[nivel][fila][col] = 0;
                 if (!esValidoEn(grid, fila, col, num)) {
-                    grid[fila][col] = num;
-                    return false; // hay error
+                    grid[nivel][fila][col] = num;
+                    return false;
                 }
-                grid[fila][col] = num;
+                grid[nivel][fila][col] = num;
             }
         }
         return true;
     }
 
-    static void imprimirSudokuInteractivo(int[][] grid, int[][] originales) {
-        System.out.println("\n=== Sudoku ===");
-        for (int i = 0; i < N; i++) {
-            if (i % 3 == 0 && i != 0)
-                System.out.println("╠═══════════╬════════════╬═══════════╣");
-
-            for (int j = 0; j < N; j++) {
-                if (j % 3 == 0 && j != 0 || j == 0)
-                    System.out.print("║");
-
-                String valor = (grid[i][j] == 0 ? " " : Integer.toString(grid[i][j]));
-
-                // Celda seleccionada
-                if (i == cursorFila && j == cursorCol)
-                    System.out.print("[" + valor + "] ");
-                else if (originales[i][j] != 0)
-                    System.out.print(" " + valor + "  "); // pista (fija)
-                else
-                    System.out.print(" " + valor + "  "); // editable
-            }
-            System.out.println();
-        }
-    }
-
-    // -------------------------------
-    // Validación y utilidades
-    // -------------------------------
-    static int contarSoluciones(int[][] grid) {
+    static int contarSoluciones(int[][][] grid) {
         return resolverYContar(grid, 0, 0, 0);
     }
 
-    static int resolverYContar(int[][] grid, int fila, int col, int count) {
+    static int resolverYContar(int[][][] grid, int fila, int col, int count) {
         if (fila == N) return count + 1;
         int siguienteFila = (col == N - 1) ? fila + 1 : fila;
         int siguienteCol = (col + 1) % N;
 
-        if (grid[fila][col] != 0)
+        if (grid[nivel][fila][col] != 0)
             return resolverYContar(grid, siguienteFila, siguienteCol, count);
 
         for (int num = 1; num <= 9; num++) {
             if (esValidoEn(grid, fila, col, num)) {
-                grid[fila][col] = num;
+                grid[nivel][fila][col] = num;
                 count = resolverYContar(grid, siguienteFila, siguienteCol, count);
                 if (count > 1) return count;
-                grid[fila][col] = 0;
+                grid[nivel][fila][col] = 0;
             }
         }
         return count;
     }
 
-    static boolean esValidoEn(int[][] grid, int fila, int col, int num) {
+    static boolean esValidoEn(int[][][] grid, int fila, int col, int num) {
         for (int i = 0; i < N; i++)
-            if (grid[fila][i] == num || grid[i][col] == num)
+            if (grid[nivel][fila][i] == num || grid[nivel][i][col] == num)
                 return false;
 
         int startRow = fila - fila % 3;
         int startCol = col - col % 3;
         for (int i = 0; i < 3; i++)
             for (int j = 0; j < 3; j++)
-                if (grid[startRow + i][startCol + j] == num)
+                if (grid[nivel][startRow + i][startCol + j] == num)
                     return false;
 
         return true;
     }
 
-    static int[][] copiarMatriz(int[][] original) {
-        int[][] copia = new int[N][N];
-        for (int i = 0; i < N; i++)
-            copia[i] = Arrays.copyOf(original[i], N);
-        return copia;
-    }
-
-    static void imprimirSudoku() {
-        imprimirSudoku(sudoku);
-    }
-
-    static void imprimirSudoku(int[][] grid) {
+    static void imprimirSudokuInteractivo(int[][][] grid, int[][][] originales) {
+        System.out.println("\n         === Sudoku ===");
+        switch (diff) {
+            case 0:
+            System.out.println("\nDificultad: MUY FÁCIL");
+            break;
+            case 1:
+            System.out.println("\nDificultad: FÁCIL");
+            break;
+            case 2:
+            System.out.println("\nDificultad: MEDIO");
+            break;
+            case 3:
+            System.out.println("\nDificultad: DIFÍCIL");
+            break;
+            case 4:
+            System.out.println("\nDificultad: MUY DIFÍCIL");
+            break;
+        }
+        System.out.println("\nNivel: " + (nivel+1));
+        System.out.println("\nVidas: " + (vidas));
+        System.out.println("╔═════════╦═════════╦═════════╗");
         for (int i = 0; i < N; i++) {
             if (i % 3 == 0 && i != 0)
-                System.out.println("------+-------+------");
+                System.out.println("╠═════════╬═════════╬═════════╣");
+
             for (int j = 0; j < N; j++) {
-                if (j % 3 == 0 && j != 0)
-                    System.out.print("| ");
-                System.out.print((grid[i][j] == 0 ? "." : grid[i][j]) + " ");
+                if (j % 3 == 0 || j == 0)
+                    System.out.print("║");
+
+                String valor = (grid[nivel][i][j] == 0 ? " " : Integer.toString(grid[nivel][i][j]));
+
+                if (i == cursorFila && j == cursorCol)
+                    System.out.print("[" + valor + "]");
+                else
+                    System.out.print(" " + valor + " ");
             }
-            System.out.println();
+            System.out.print("║\n");
         }
+        System.out.println("╚═════════╩═════════╩═════════╝");
     }
 
+    static int[][][] copiarMatriz(int[][][] original) {
+        int[][][] copia = new int[25][N][N];
+        for (int i = 0; i < 25; i++)
+            for (int j = 0; j < N; j++)
+                copia[i][j] = Arrays.copyOf(original[i][j], N);
+        return copia;
+    }
 }
