@@ -16,7 +16,6 @@ public class PROYECTO5_SUDOKU {
     public static void main(String[] args) {
         // 1. Generar solución completa
         generarSudoku();
-
         System.out.println("Sudoku completo:");
         imprimirSudoku();
 
@@ -158,13 +157,13 @@ public class PROYECTO5_SUDOKU {
         System.out.println("\n=== Sudoku ===");
         for (int i = 0; i < N; i++) {
             if (i % 3 == 0 && i != 0)
-                System.out.println("------+-------+------");
+                System.out.println("╠═══════════╬════════════╬═══════════╣");
 
             for (int j = 0; j < N; j++) {
-                if (j % 3 == 0 && j != 0)
-                    System.out.print("| ");
+                if (j % 3 == 0 && j != 0 || j == 0)
+                    System.out.print("║");
 
-                String valor = (grid[i][j] == 0 ? "." : Integer.toString(grid[i][j]));
+                String valor = (grid[i][j] == 0 ? " " : Integer.toString(grid[i][j]));
 
                 // Celda seleccionada
                 if (i == cursorFila && j == cursorCol)
