@@ -22,17 +22,45 @@
           "id": 4,
           "nombre": "Limon.jpg",
           "tipo": "file"
-        },
-        {
-          "children": [],
-          "contenido": "",
-          "id": 5,
-          "nombre": "Platano.jpg",
-          "tipo": "file"
         }
       ],
       "id": 1,
       "nombre": "Arbol",
+      "tipo": "folder"
+    },
+    {
+      "children": [
+        {
+          "children": [],
+          "contenido": "",
+          "id": 7,
+          "nombre": "Coco.jpg",
+          "tipo": "file"
+        },
+        {
+          "children": [],
+          "contenido": "",
+          "id": 8,
+          "nombre": "Hoja.jpg",
+          "tipo": "file"
+        }
+      ],
+      "id": 6,
+      "nombre": "Palmera",
+      "tipo": "folder"
+    },
+    {
+      "children": [
+        {
+          "children": [],
+          "contenido": "",
+          "id": 10,
+          "nombre": "Nuez.jpg",
+          "tipo": "file"
+        }
+      ],
+      "id": 9,
+      "nombre": "Pino",
       "tipo": "folder"
     }
   ],
