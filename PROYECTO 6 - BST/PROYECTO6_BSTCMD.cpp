@@ -14,6 +14,7 @@
 // SIMPLIFICACIONES DE ESCRITURA
 using namespace std;
 using json = nlohmann::json;
+string rootname = "S:";
 
 /*================
    ESTRUCTURAS
@@ -32,15 +33,19 @@ struct Node {
 
 // PAPELERA
 struct TrashNode {
-    Node* node; // Puntero hacia el nodo que fue eliminado (junto con sus hijos)
-    Node* originalParent; // Puntero a dónde debe ser restaurado (su padre original)
+    Node* node;             // Puntero hacia el nodo que fue eliminado (junto con sus hijos)
+    int originalParentID;   // ID del nodo padre al que debe ser restaurado
 };
 
-/*================================
-    PROCESOS DE MEMORIA (JSON)
-================================*/
+/*==============================
+    INTERCAMBIOS DE MEMORIA
+==============================*/
 
-// SERIALIZAR (Node* -> JSON)
+/*--------------------------------
+    SERIALIZAR (Node* -> JSON)
+--------------------------------*/
+
+// ARBOL (ROOT = 'S:')
 void to_json(json& j, const Node* n) {
     if (!n) {
         j = nullptr;
@@ -66,14 +71,28 @@ void to_json(json& j, const Node* n) {
     j["children"] = children_j;
 }
 
-// DESERIALIZAR (JSON -> Node*)
+// PAPELERA (ROOT 'BIN')
+void to_json(json& j, const TrashNode& tn) {
+    // 1. Serializa el sub-árbol del nodo eliminado
+    json node_j;
+    to_json(node_j, tn.node); // Usa el to_json para Node*
+
+    j["node"] = node_j;
+    j["parent"] = tn.originalParentID; // Guarda el ID del padre
+}
+
+/*---------------------------------
+    DESERIALIZAR (JSON -> Node*)
+---------------------------------*/
+
+// ARBOL (ROOT = 'S:')
 void from_json(const json& j, Node*& n) {
     if (j.is_null()) {
         n = nullptr;
         return;
     }
 
-    // Crear el nuevo nodo y asignar valores
+    // Crea el nuevo nodo y asigna valores
     n = new Node();
     n->id = j.at("id").get<int>();
     n->nombre = j.at("nombre").get<string>();
@@ -86,7 +105,7 @@ void from_json(const json& j, Node*& n) {
         n->contenido = "";
     }
 
-    // Procesar los hijos recursivamente
+    // Procesa los hijos recursivamente
     if (j.count("children")) {
         for (const auto& child_j : j.at("children")) {
             Node* child = nullptr;
@@ -96,6 +115,22 @@ void from_json(const json& j, Node*& n) {
                 n->children.push_back(child);
             }
         }
+    }
+}
+
+// PAPELERA (ROOT 'BIN')
+void from_json(const json& j, TrashNode& tn) {
+    // 1. Deserializa el sub-árbol
+    Node* restoredNode = nullptr;
+    from_json(j.at("node"), restoredNode); // Usa from_json para Node*
+    tn.node = restoredNode;
+
+    // 2. Asigna el ID del padre original
+    tn.originalParentID = j.at("parent").get<int>();
+
+    // Se asigna el parent en nullptr para que no apunte a memoria invalida
+    if (tn.node) {
+        tn.node->parent = nullptr;
     }
 }
 
@@ -175,7 +210,7 @@ public:
     FileSystemTree() {
         root = new Node();
         root->id = 0;
-        root->nombre = "/";
+        root->nombre = rootname;
         root->tipo = "folder";
         root->parent = nullptr;
         nextID = 1;
@@ -207,9 +242,11 @@ public:
         ofstream file(filename);
 
         if (file.is_open()) {
-            file << j.dump(2); // Convierte el objeto JSON a un string con '4' espacios de indentación
+            file << j.dump(2); // Convierte el objeto JSON a un string con 'n' espacios de indentación
             file.close(); // Cierra el archivo después de escribir
             cout << "\tSistema de archivos guardado en: " << filename << "\n";
+
+            saveTrash(); //Guarda la papelera también
         } else {
             cout << "\tERROR: No se pudo abrir el archivo para guardar.\n";
         }
@@ -222,7 +259,7 @@ public:
         cout << "\tReparando...\n";
         root = new Node();
         root->id = 0;
-        root->nombre = "/";
+        root->nombre = rootname;
         root->tipo = "folder";
         root->parent = nullptr;
         nextID = 1;
@@ -246,10 +283,11 @@ public:
         if (!file.is_open()) {
             cout << "\n===================================================================================\n\n";
             cout << "\tAVISO: Archivo " << filename << " no encontrado. Creando sistema vacío...\n";
-            repair(); // Si el archivo no existe, inicializa un nuevo archivo limpio
+                       repair(); // Si el archivo no existe, inicializa un nuevo archivo limpio
+            cout << "\n"; loadTrash();
             cout << "\n===================================================================================";
 
-            return; // Termina la función
+            return; // Termina la función abruptamente
         }
 
         try {
@@ -264,27 +302,31 @@ public:
             // Reconstruye el árbol
             from_json(j, root);
 
-            // Actualizar nextID para evitar IDs duplicados
+            // Actualiza el nextID para evitar IDs duplicados
             if (root) {
-                // Encontramos el ID más alto de todo el árbol que acabamos de cargar
+                // Busca el ID más alto del arbol
                 int maxUsedID = findMaxID(root);
 
-                // Se asigna el siguiente valor disponible
+                // Asigna el siguiente valor disponible
                 nextID = maxUsedID + 1;
             }
+
             cout << "\n===================================================================\n\n";
             cout <<   "\tSistema cargado exitosamente desde: " << filename << "\n\n";
-            cout <<   "\tElementos Totales del Arbol: " << nextID << "\n";
+            loadTrash(); //Carga también a la papelera
+            cout << "\n\tElementos Totales del Arbol: " << nextID << "\n";
             cout << "\n===================================================================";
 
         } catch (const nlohmann::json::parse_error& e) {
             cout << "\n=====================================================================\n\n";
             cout <<   "\tERROR: El archivo JSON esta corrupto o mal formado...\n\n"; repair();
+            cout << "\n"; loadTrash();
             cout << "\n=====================================================================";
 
         } catch (...) {
             cout << "\n=====================================================\n\n";
             cout <<   "\tERROR desconocido durante la carga...\n"; repair();
+            cout << "\n"; loadTrash();
             cout << "\n=====================================================";
         }
     }
@@ -314,6 +356,63 @@ public:
         return maxId;
     }
 
+    /*--------------------------
+        GUARDAR LA PAPELERA
+    -------------------------*/
+    void saveTrash(const string& filename = "trash.json") {
+        json j_trash = json::array();
+
+        for (const auto& item : trash) {
+            json j_item;
+            to_json(j_item, item); // Usamos el nuevo to_json(TrashNode)
+            j_trash.push_back(j_item);
+        }
+
+        ofstream file(filename);
+        if (file.is_open()) {
+            file << j_trash.dump(2); // Sangría
+            file.close();
+            cout << "\tPapelera guardada en: " << filename << "\n";
+        } else {
+            cout << "\tERROR: No se pudo abrir el archivo de papelera para guardar.\n";
+        }
+    }
+
+    /*-------------------------
+        CARGAR LA PAPELERA
+    ------------------------*/
+    void loadTrash(const string& filename = "trash.json") {
+        ifstream file(filename);
+        if (!file.is_open()) {
+            return; // Si no existe, la papelera se queda vacía
+        }
+
+        try {
+            json j = json::parse(file);
+            file.close();
+
+            // Limpia la memoria actual de la papelera antes de cargar (doble check)
+            for (const auto& item : trash) {
+                 deleteNodes(item.node); // Usa deleteNodes para liberar todo el subárbol
+            }
+            trash.clear();
+
+            for (const auto& j_item : j) {
+                TrashNode item;
+                from_json(j_item, item); // Cargamos usando from_json(TrashNode)
+                trash.push_back(item);
+            }
+            cout << "\tPapelera cargada exitosamente\n";
+
+        } catch (const nlohmann::json::parse_error& e) {
+            cout << "\tADVERTENCIA: Archivo de papelera corrupto o mal formado - Papelera vaciada!\n";
+            trash.clear();
+        } catch (...) {
+            cout << "\tADVERTENCIA: Error desconocido al cargar la papelera - Papelera vaciada!\n";
+            trash.clear();
+        }
+    }
+
     /*---------------------------
          SPLIT DE RUTAS
     ---------------------------*/
@@ -333,7 +432,7 @@ public:
         BUSCAR NODO POR RUTA
     ---------------------------*/
     Node* findNodeByPath(const string& path) {
-        if (path == "/") return root;
+        if (path == rootname) return root;
 
         vector<string> parts = splitPath(path);
         Node* current = root;
@@ -415,7 +514,7 @@ public:
 
         // La raíz (id 0) no se puede renombrar
             if (nodeToRename == root) {
-            cout << "\tERROR: No se puede renombrar la carpeta raíz (/).\n";
+            cout << "\tERROR: No se puede renombrar la carpeta raíz (" << rootname << ").\n";
             return;
         }
 
@@ -451,7 +550,7 @@ public:
 
         // La raíz no puede ser movida
         if (sourceNode == root) {
-            cout << "\tERROR: No se puede mover la carpeta raíz (/).\n";
+            cout << "\tERROR: No se puede mover la carpeta raíz (" << rootname << ").\n";
             return;
         }
 
@@ -517,7 +616,7 @@ public:
 
         // La raíz no debe ser eliminada
         if (nodeToRemove == root) {
-            cout << "\tERROR: No se puede eliminar la carpeta raíz (/).\n";
+            cout << "\tERROR: No se puede eliminar la carpeta raíz (" << rootname << ").\n";
             return;
         }
 
@@ -534,12 +633,17 @@ public:
         // 3. Mueve a la papelera (TrashNode Push)
         TrashNode trashItem;
         trashItem.node = nodeToRemove;
-        trashItem.originalParent = oldParent; // Guardamos el padre original
+        trashItem.originalParentID = oldParent->id; // Guardamos el ID del padre original
 
-        trash.push_back(trashItem); // Añadimos a la pila/vector
+        trash.push_back(trashItem); // Añadimos al vector temporal
         nodeToRemove->parent = nullptr; // Limpia la referencia al padre
 
         cout << "\tElemento '" << nodeToRemove->nombre << "' movido a la papelera.\n";
+
+        saveTrash();
+
+        /* Milton, para quitar el autoguardado de la papelera,
+           solo debes activar esta linea de arriba. */
     }
 
     /*-----------------------------------
@@ -563,41 +667,70 @@ public:
             return;
         }
 
-        // 2. Extrae el elemento encontrado y removerlo del vector
+        // 2. Copia el elemento encontrado en bin y lo remueve despues de pegarlo
         TrashNode trashItem = *it;
         trash.erase(it);
 
         Node* nodeToRestore = trashItem.node;
-        Node* originalParent = trashItem.originalParent;
+
+        // Aquí busca el puntero en memoria del nodo padre usando el ID para reinsertarlo
+        Node* originalParent = AuxNodeID(root, trashItem.originalParentID);
+
+        string newName = nodeToRestore->nombre;
+        string newParentRute = "";
+        bool conflict = false;
+
+        // OJO: El padre debe existir en la raíz del árbol principal
+        if (!originalParent) {
+            cout << "\tERROR: No se puede restaurar el elemento '" << nodeToRestore->nombre
+            << "'. El padre original (ID: " << trashItem.originalParentID << ") ya no existe.\n\n";
+
+            cout << "\tIngrese una NUEVA RUTA para restaurar el elemento (o escriba 'Exit' para cancelar): ";
+
+                do {
+                    conflict = false;
+
+                    // Usa el nuevo PATH para encontrar un Nodo sustituto
+                    cin >> newParentRute;
+                    originalParent = findNodeByPath(newParentRute);
+
+                    if (!originalParent) {
+                        cout << "\n\tERROR: Ruta de restauracion '" << newParentRute << "' no encontrada.\n";
+                        cout << "\t Intente otra vez (o escriba 'Exit' para cancelar): ";
+                        conflict = true;
+                    }
+
+                    if (newParentRute == "Exit") {
+                        trash.push_back(trashItem); // Devuelve el nodo a la papelera
+                        cout << "\n\t Restauración cancelada. El elemento sigue en la papelera.\n";
+                        return; // Regresa al Menú
+                    }
+
+                } while (conflict); // Repite mientras haya conflicto
+            return;
+        }
 
         if (originalParent) {
-
-            string newName = nodeToRestore->nombre;
-            bool conflict = false;
-
             do {
                 conflict = false;
+
                 // Asegura que el padre original no tenga un elemento con el mismo nombre
                 for (Node* sibling : originalParent->children) {
                     if (sibling->nombre == newName) {
+                        cout << "\tADVERTENCIA: Ya existe un elemento llamado '" << newName << "' en el directorio de destino.\n";
+                        cout << "\tIngrese un NUEVO NOMBRE para restaurar el elemento (o escriba 'Exit' para cancelar): ";
+                        cin >> newName;
                         conflict = true;
                         break;
                     }
                 }
 
-                if (conflict) {
-                    cout << "\tADVERTENCIA: Ya existe un elemento llamado '" << newName << "' en el directorio de destino.\n";
-                    cout << "\tIngrese un NUEVO NOMBRE para restaurar el elemento (o escriba 'Exit' para cancelar): ";
-                    cin >> newName;
-
-                    if (newName == "Exit") {
+                if (newName == "Exit") {
                         trash.push_back(trashItem); // Devuelve el nodo a la papelera
-                        cout << "   Restauración cancelada. El elemento sigue en la papelera.\n";
+                        cout << "\n\t Restauración cancelada. El elemento sigue en la papelera.\n";
                         return; // Regresa al Menú
                     }
-                }
-
-            } while (conflict); // Repite mientras haya conflicto
+                } while (conflict); // Repite mientras haya conflicto
 
             // Si el nombre se cambió, actualizar el nodo
             if (newName != nodeToRestore->nombre) {
@@ -617,11 +750,61 @@ public:
 
             cout << "\tElemento '" << nodeToRestore->nombre << "' restaurado exitosamente a: " << getFullPath(originalParent) << "\n";
 
-        } else {
-            // En el imposible caso de que el padre sea la raíz...
-            cout << "\tERROR: No se puede restaurar. El nodo no tiene un padre original válido.\n";
-            delete nodeToRestore; // Y luego lo eliminamos por seguridad
+            saveTrash();
         }
+    }
+
+    /*---------------------------------------------
+        BORRADO PERMANENTE INDIVIDUAL (DEL-ID)
+    --------------------------------------------*/
+    void delID(int id) {
+        // 1. Busca el elemento por ID en la papelera
+        auto it = trash.begin();
+        while (it != trash.end()) {
+            if (it->node->id == id) {
+                break;
+            }
+            ++it;
+        }
+
+        if (it == trash.end()) {
+            cout << "\tERROR: El ID " << id << " no existe en la papelera.\n";
+            return;
+        }
+
+        // 2. Borrado: Libera el subárbol del nodo y elimina el TrashNode
+        Node* nodeToDelete = it->node;
+        string name = nodeToDelete->nombre;
+
+        deleteNodes(nodeToDelete); // Libera recursivamente toda la memoria
+
+        trash.erase(it); // Elimina el elemento de la lista 'trash'
+
+        cout << "\tElemento '" << name << "' (ID: " << id << ") eliminado permanentemente.\n";
+
+        //saveTrash();
+    }
+
+    /*-------------------------------------
+        VACIAR TODA LA PAPELERA (EMPTY)
+    -------------------------------------*/
+    void emptyTrash() {
+        if (trash.empty()) {
+            cout << "\n\tLa papelera ya esta vacia.\n";
+            return;
+        }
+
+        // 1. Libera la memoria de todos los nodos en la papelera
+        for (const auto& item : trash) {
+            deleteNodes(item.node);
+        }
+
+        // 2. Limpia el vector (los TrashNode)
+        trash.clear();
+
+        cout << "\n\tPapelera vaciada permanentemente.\n";
+
+        saveTrash();
     }
 
     /*--------------------------------
@@ -682,7 +865,7 @@ public:
 
         string fullPath;
         for (auto& p : parts) {
-            if (p != "/") fullPath += "/";
+            if (p != rootname) fullPath += "/";
             fullPath += p;
         }
         return fullPath;
@@ -764,25 +947,25 @@ void Eliminar(auto& fs) {
 }
 
 void Restore(auto& fs) {
-    // 1. Miestra la papelera saber qué IDs están disponibles
+    // 1. Muestra la papelera saber qué IDs están disponibles
     fs.lsTrash();
 
     if (!fs.isTrashEmpty()) {
         int id;
-        cout << "\n\tIngrese el ID del elemento a restaurar (0 para cancelar): "; cin >> id;
+        cout << "\tIngrese el ID del elemento a restaurar (0 para cancelar): "; cin >> id;
 
         if (id != 0) {
             // 2. Comienza la consulta de restauración
             fs.restoreID(id);
         } else {
-            cout << "\n\tRestauración cancelada.\n";
+            cout << "\tRestauración cancelada.\n";
         }
     }
 }
 
 void Ls(auto& fs) {
     string path;
-    cout << "   Ruta: ";
+    cout << "\tRuta: ";
     cin >> path;
     fs.ls(path);
 }
@@ -807,6 +990,40 @@ void FullRute(auto& fs) {
     }
 }
 
+void DelID(auto& fs) {
+    fs.lsTrash();
+    if (fs.isTrashEmpty()) return;
+
+    int id;
+    cout << "\n\tIngrese el ID del elemento a ELIMINAR permanentemente (0 para cancelar): ";
+    cin >> id;
+
+    if (id != 0) {
+        fs.delID(id);
+    } else {
+        cout << "\n\tBorrado cancelado.\n";
+    }
+}
+
+void Empty(auto& fs) {
+    if (fs.isTrashEmpty()) {
+        cout << "\tLa papelera ya esta vacia.\n";
+        return;
+    }
+
+    char confirm = '0';
+    cout << "\tADVERTENCIA: ¿Desea vaciar PERMANENTEMENTE la papelera completa? (S/N): ";
+
+    do {
+        cin >> confirm;
+        if (toupper(confirm) == 'S') {
+            fs.emptyTrash();
+        } else if (toupper(confirm) == 'N') {
+            cout << "\n\tVaciado cancelado.\n";
+        }
+    } while (toupper(confirm) != 'S' && toupper(confirm) != 'N');
+}
+
 void Guardar(auto& fs) {
     string filename = "filesystem.json";
     fs.save(filename);
@@ -828,7 +1045,8 @@ void MenuSelect(string& Option) {
     cout <<   "[5] RM (Eliminar)\t[6] Ver Papelera\n";
     cout <<   "[7] RS (Restaurar)\t[8] LS (Ver Hijos)\n";
     cout <<   "[9] Ruta Completa\t[A] Preorden\n";
-    cout <<   "[B] Guardar\n\n";
+    cout <<   "[B] Vaciar Elemento\t[C] Vaciar Papelera\n";
+    cout <<   "[D] Guardar\n\n";
 
     cout <<   "[0] Salir\n";
     cout << "\n========================================\n\n";
@@ -863,7 +1081,9 @@ int main() {
         else if (Option == "8") {Ls(fs);}
         else if (Option == "9") {FullRute(fs);}
         else if (Option == "A") {fs.printPreorder();}
-        else if (Option == "B") {Guardar(fs);}
+        else if (Option == "B") {DelID(fs);}
+        else if (Option == "C") {Empty(fs);}
+        else if (Option == "D") {Guardar(fs);}
         else if (Option == "0") {cout << "\tAdios :D\n";}
         else {cout << "\n\tOpcion invalida.\n";}
 
