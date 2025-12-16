@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <cctype>
 #include <limits>
 #include "json.hpp"
 
@@ -15,6 +16,26 @@
 using namespace std;
 using json = nlohmann::json;
 string rootname = "S:";
+string UserName = "USUARIO";
+
+// ESPACIO DE UTILIDADES
+namespace Utils {
+    // Convertir el string a mayúsculas
+    void Mayus(std::string& s) {
+        std::transform(s.begin(), s.end(), s.begin(),::toupper);
+    }
+
+    bool ContainsIlegal(const string& s) {
+        const string Ilegals = "/\:*?!+@#€¬[]^{}<>|";
+
+        for (char c : s) {
+            if (Ilegals.find(c) != string::npos) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
 
 /*================
    ESTRUCTURAS
@@ -58,6 +79,7 @@ struct TrieNode {
         }
     }
 };
+
 /*==============================
     INTERCAMBIOS DE MEMORIA
 ==============================*/
@@ -161,19 +183,56 @@ class Trie {
 private:
     TrieNode* root;
 
-    // Función auxiliar para buscar IDs en un subárbol
+    // AUXILIAR: Recorrido DFS para obtener IDs (Usado en Autocompletado)
     void findIDsByPrefix(TrieNode* node, vector<int>& results) {
         if (!node) return;
 
-        // 1. Si este nodo marca el final de una ruta, guarda su ID.
         if (node->isEndOfWord && node->fileSystemNodeID != -1) {
             results.push_back(node->fileSystemNodeID);
         }
 
-        // 2. Continúa buscando en todos los hijos recursivamente.
         for (auto const& [key, child] : node->children) {
             findIDsByPrefix(child, results);
         }
+    }
+
+    // AUXILIAR: Implementación recursiva de eliminación (O(L))
+    // Retorna true si el nodo 'current' debe ser eliminado por su padre.
+    bool removeRecursive(TrieNode* current, const string& path, int depth) {
+        if (!current) return false;
+
+        // 1. Caso Base: Hemos llegado al final de la ruta a eliminar
+        if (depth == path.size()) {
+            if (!current->isEndOfWord) return false; // El nodo no estaba indexado como palabra final
+
+            current->isEndOfWord = false;        // Desmarcar el final de la palabra
+            current->fileSystemNodeID = -1;      // Desvincular del FileSystem
+
+            // Solo se puede eliminar si no es el final de OTRA palabra y no tiene hijos
+            return current->children.empty();
+        }
+
+        // 2. Paso Recursivo
+        char ch = path[depth];
+        auto it = current->children.find(ch);
+
+        if (it == current->children.end()) {
+            return false; // Prefijo no existe, no hay nada que borrar
+        }
+
+        // Llamada recursiva para el hijo
+        bool shouldDeleteChild = removeRecursive(it->second, path, depth + 1);
+
+        // 3. Post-Procesamiento
+        if (shouldDeleteChild) {
+            delete it->second;      // Liberar la memoria del nodo hijo
+            current->children.erase(it); // Quitar la referencia del mapa
+
+            // Devolvemos true si el nodo actual puede ser eliminado (no es final de palabra
+            // y su lista de hijos está vacía)
+            return !current->isEndOfWord && current->children.empty();
+        }
+        return false;
     }
 
 public:
@@ -185,19 +244,21 @@ public:
         delete root;
     }
 
-    // Insertar una ruta completa
-    void insert(const string& path, int nodeID) {
-        TrieNode* current = root;
-        // La ruta 'S:' debe ser tratada como un caso especial si es necesario,
-        // pero para simplificar, usaremos la ruta completa.
+    // Función para normalizar y obtener la ruta que realmente se indexará
+    string normalizePath(const string& path) {
         string normalizedPath = path;
-
-        // Si la ruta comienza con la raíz "S:", la omitimos para una mejor indexación.
-        // Opcionalmente, puedes indexar la ruta completa. Aquí indexamos la parte
-        // posterior a la raíz (ej: "Users/Data.txt")
+        // Si la ruta comienza con la raíz "S:", la omitimos
         if (normalizedPath.rfind(rootname, 0) == 0) {
             normalizedPath = normalizedPath.substr(rootname.length());
         }
+        return normalizedPath;
+    }
+
+    // Insertar una ruta completa (O(L))
+    void insert(const string& path, int nodeID) {
+        TrieNode* current = root;
+        string normalizedPath = normalizePath(path);
+
         if (normalizedPath.empty()) {
             // Caso especial: la raíz misma.
             current->fileSystemNodeID = nodeID;
@@ -205,7 +266,6 @@ public:
             return;
         }
 
-        // Iteramos sobre cada carácter de la ruta normalizada (ej: "/Users/Data.txt")
         for (char ch : normalizedPath) {
             if (current->children.find(ch) == current->children.end()) {
                 current->children[ch] = new TrieNode();
@@ -213,42 +273,42 @@ public:
             current = current->children[ch];
         }
 
-        // Marcar el final de la ruta y almacenar el ID.
         current->isEndOfWord = true;
         current->fileSystemNodeID = nodeID;
     }
 
-    // Función principal para autocompletar/buscar por prefijo
+    // Nuevo método para eliminar una ruta del índice (O(L))
+    void remove(const string& path) {
+        string normalizedPath = normalizePath(path);
+        removeRecursive(root, normalizedPath, 0);
+    }
+
+    // Función principal para autocompletar/buscar por prefijo (O(L + M), donde M es el número de resultados)
     vector<int> autocomplete(const string& prefix) {
         TrieNode* current = root;
         vector<int> foundIDs;
-        string normalizedPrefix = prefix;
-
-        // Si el prefijo comienza con la raíz, la omitimos (igual que en insert)
-        if (normalizedPrefix.rfind(rootname, 0) == 0) {
-            normalizedPrefix = normalizedPrefix.substr(rootname.length());
-        }
+        string normalizedPrefix = normalizePath(prefix); // Usar normalización aquí también
 
         // 1. Recorrer hasta el final del prefijo dado
         for (char ch : normalizedPrefix) {
             if (current->children.find(ch) == current->children.end()) {
-                return {}; // No hay nodos que coincidan con este prefijo.
+                return {};
             }
             current = current->children[ch];
         }
 
-        // 2. Una vez en el nodo final del prefijo, buscar todos los descendientes
+        // 2. Buscar todos los descendientes
         findIDsByPrefix(current, foundIDs);
-
         return foundIDs;
     }
 
-    // Función para limpiar y reconstruir el Trie (útil después de mover/eliminar)
+    // Función para limpiar y reconstruir el Trie (SOLO útil después de LOAD o como debug)
     void clear() {
         delete root;
         root = new TrieNode();
     }
 };
+
 /*=====================
    ÁRBOL DE ARCHIVOS
 =======================*/
@@ -360,7 +420,7 @@ public:
 
         // 2. Libera la memoria de los nodos en la papelera (trash)
         for (const auto& item : trash) { // Recorre TrashNode
-            delete item.node; // Libera el puntero al Node*
+            deleteNodes(item.node); // Libera el puntero al Node*
         }
     }
     /*------------------------------------
@@ -371,7 +431,7 @@ public:
         vector<int> matchingIDs = fileTrie.autocomplete(prefix);
 
         if (matchingIDs.empty()) {
-            cout << "\tNo se encontraron rutas que coincidan con el prefijo: '" << prefix << "'\n";
+            cout << "No se encontraron rutas que coincidan con el prefijo: '" << prefix << "'\n";
             return;
         }
 
@@ -397,42 +457,40 @@ public:
     void rebuildTrie() {
         fileTrie.clear(); // Limpia el Trie anterior
         buildTrieRecursive(root, ""); // Rellena el Trie a partir de la raíz
-        cout << "\tÍndice de búsqueda (Trie) reconstruido.\n";
+        cout << "\tIndice de búsqueda (Trie) reconstruido.\n";
     }
+
     /*---------------------------------
         GUARDAR EL ESTADO DEL ÁRBOL
     ---------------------------------*/
-    /*---------------------------------
-    GUARDAR EL ESTADO DEL ÁRBOL
----------------------------------*/
-void save(const string& filename = "filesystem.json") {
-    json main_j;
+    void save(const string& filename = "filesystem.json") {
+        json main_j;
 
-    // 1. Serializar el arbol principal
-    json root_j;
-    to_json(root_j, root);
-    main_j["root"] = root_j; // La raíz va bajo la clave "root"
+        // 1. Serializar el arbol principal
+        json root_j;
+        to_json(root_j, root);
+        main_j["root"] = root_j; // La raíz va bajo la clave "root"
 
-    // 2. Serializar la papelera
-    json trash_j = json::array();
-    for (const auto& item : trash) {
-        json j_item;
-        to_json(j_item, item); // Usamos to_json(TrashNode)
-        trash_j.push_back(j_item);
+        // 2. Serializar la papelera
+        json trash_j = json::array();
+        for (const auto& item : trash) {
+            json j_item;
+            to_json(j_item, item); // Usamos to_json(TrashNode)
+            trash_j.push_back(j_item);
+        }
+        main_j["trash"] = trash_j; // La papelera va bajo la clave "trash".
+
+        // 3. Persistencia (Escribir el JSON en UN solo archivo)
+        ofstream file(filename);
+
+        if (file.is_open()) {
+            file << main_j.dump(2); // Guarda el objeto completo
+            file.close();
+            cout << "\tSistema de archivos (root y papelera) guardado en: " << filename << "\n";
+        } else {
+            cout << "\tERROR: No se pudo abrir el archivo para guardar.\n";
+        }
     }
-    main_j["trash"] = trash_j; // La papelera va bajo la clave "trash".
-
-    // 3. Persistencia (Escribir el JSON en UN solo archivo)
-    ofstream file(filename);
-
-    if (file.is_open()) {
-        file << main_j.dump(2); // Guarda el objeto completo
-        file.close();
-        cout << "\tSistema de archivos (root y papelera) guardado en: " << filename << "\n";
-    } else {
-        cout << "\tERROR: No se pudo abrir el archivo para guardar.\n";
-    }
-}
 
     /*-----------------------------------
         REPARAR EL ESTADO DEL ARCHIVO
@@ -465,9 +523,10 @@ void load(const string& filename = "filesystem.json") {
 
     ifstream file(filename);
 
+    cout << "\n===================================================================\n\n";
+
     if (!file.is_open()) {
         // Si no encuentra guardado, llama al repair.
-        cout << "\n===================================================================================\n\n";
         cout << "\tAVISO: Archivo " << filename << " no encontrado. Creando sistema vacío...\n";
         repair(filename); // Usamos repair(filename) para que use el nombre correcto.
         cout << "\n\tLa papelera está vacía.\n";
@@ -485,7 +544,7 @@ void load(const string& filename = "filesystem.json") {
         } else {
             // Si no tiene "root", crea uno vacío.
             repair(filename);
-            cout << "\n\tADVERTENCIA: Archivo JSON sin clave 'root'. Creando sistema vacío.\n";
+            cout << "\n\tADVERTENCIA: Archivo JSON sin clave 'root' - Creando sistema vacío.\n";
             return;
         }
 
@@ -510,21 +569,18 @@ void load(const string& filename = "filesystem.json") {
             nextID = maxUsedID + 1;
         }
 
-        cout << "\n===================================================================\n\n";
         cout << "\tSistema cargado exitosamente desde: " << filename << "\n\n";
-        cout << "\tElementos Totales del Arbol: " << nextID << "\n";
+        cout << "\tSiguiente ID de elemento disponible: " << nextID << "\n";
         cout << "\n===================================================================";
 
 
     } catch (const nlohmann::json::parse_error& e) {
 
-        cout << "\n=====================================================================\n\n";
         cout << "\tERROR: El archivo JSON esta corrupto o mal formado...\n\n"; repair();
         cout << "\n\tLa papelera está vacía.\n";
         cout << "\n=====================================================================";
     } catch (...) {
 
-        cout << "\n=====================================================\n\n";
         cout << "\tERROR desconocido durante la carga...\n"; repair();
         cout << "\n\tLa papelera está vacía.\n";
         cout << "\n=====================================================";
@@ -603,11 +659,21 @@ void load(const string& filename = "filesystem.json") {
 
         cout << "\n";
 
+        // Valida la ruta
         if (!parent) {
-            cout << "\tRuta no encontrada.\n";
+            cout << "Ruta no encontrada.\n";
             return;
         }
 
+        // Valida duplicidad de nombres
+        for (Node* child : parent->children) {
+            if (child->nombre == name) {
+                cout << "ERROR: Ya existe un '" << name << "' en el directorio: " << getFullPath(parent) << "\n";
+            return;
+            }
+        }
+
+        // Creación del nuevo nodo
         Node* nuevo = new Node();
         nuevo->id = nextID++;
         nuevo->nombre = name;
@@ -615,9 +681,13 @@ void load(const string& filename = "filesystem.json") {
         nuevo->contenido = "";
         nuevo->parent = parent;
 
+        // Guardado en el vector temporal
         parent->children.push_back(nuevo);
-        cout << "\tCarpeta creada: " << name << "\n";
-        rebuildTrie();
+
+        // Confirmación visual
+        cout << "Carpeta creada: " << name << "\n";
+        // Inserción directa O(L)
+        fileTrie.insert(getFullPath(nuevo), nuevo->id);
     }
 
     /*-----------------------
@@ -628,11 +698,21 @@ void load(const string& filename = "filesystem.json") {
 
         cout << "\n";
 
+        // Valida la ruta
         if (!parent) {
-            cout << "\tRuta no encontrada.\n";
+            cout << "Ruta no encontrada.\n";
             return;
         }
 
+        // Valida duplicidad de nombres
+        for (Node* child : parent->children) {
+            if (child->nombre == name) {
+                cout << "ERROR: Ya existe un '" << name << "' en el directorio: " << getFullPath(parent) << "\n";
+                return;
+            }
+        }
+
+        // Creación del nuevo nodo
         Node* nuevo = new Node();
         nuevo->id = nextID++;
         nuevo->nombre = name;
@@ -641,8 +721,11 @@ void load(const string& filename = "filesystem.json") {
         nuevo->parent = parent;
 
         parent->children.push_back(nuevo);
-        cout << "\tArchivo creado: " << name << "\n";
-        rebuildTrie();
+
+        // Confirmación visual
+        cout << "Archivo creado: " << name << "\n";
+        // Inserción directa O(L)
+        fileTrie.insert(getFullPath(nuevo), nuevo->id);
     }
 
 
@@ -654,13 +737,13 @@ void load(const string& filename = "filesystem.json") {
         Node* nodeToRename = findNodeByPath(path);
 
         if (!nodeToRename) {
-            cout << "\tERROR: Ruta '" << path << "' no encontrada.\n";
+            cout << "ERROR: Ruta '" << path << "' no encontrada.\n";
             return;
         }
 
         // La raíz (id 0) no se puede renombrar
             if (nodeToRename == root) {
-            cout << "\tERROR: No se puede renombrar la carpeta raíz (" << rootname << ").\n";
+            cout << "ERROR: No se permite renombrar la carpeta raíz (" << rootname << ").\n";
             return;
         }
 
@@ -671,17 +754,26 @@ void load(const string& filename = "filesystem.json") {
         for (Node* sibling : parent->children) {
             // Compara con todos los hermanos, excepto consigo mismo (nodeToRename)
             if (sibling != nodeToRename && sibling->nombre == newName) {
-                cout << "\tERROR: Ya existe un elemento llamado '" << newName << "' en el directorio padre.\n";
+                cout << "ERROR: Ya existe un '" << newName << "' en el directorio padre.\n";
                 return;
             }
         }
 
-        // 2. Realizar el renombrado
+        // Obtiene la ruta antigua antes de renombrar
+        string oldPath = getFullPath(nodeToRename);
+
+        // 2. Realiza el renombrado
         string oldName = nodeToRename->nombre;
         nodeToRename->nombre = newName;
 
-        cout << "\tNodo renombrado: '" << oldName << "' -> '" << newName << "'\n";
-        rebuildTrie();
+        // 3. Quita la entrada antigua del Trie
+        fileTrie.remove(oldPath);
+
+        // 4. Obtiene la nueva ruta y añade la nueva entrada
+        string newPath = getFullPath(nodeToRename);
+        fileTrie.insert(newPath, nodeToRename->id);
+
+        cout << "Nodo renombrado: '" << oldName << "' -> '" << newName << "'\n";
     }
 
     /*---------------------
@@ -691,13 +783,13 @@ void load(const string& filename = "filesystem.json") {
         // 1. Encuentra el nodo a mover (origen)
         Node* sourceNode = findNodeByPath(sourcePath);
         if (!sourceNode) {
-            cout << "\tERROR: Ruta de origen '" << sourcePath << "' no encontrada.\n";
+            cout << "ERROR: Ruta de origen '" << sourcePath << "' no encontrada.\n";
             return;
         }
 
         // La raíz no puede ser movida
         if (sourceNode == root) {
-            cout << "\tERROR: No se puede mover la carpeta raíz (" << rootname << ").\n";
+            cout << "ERROR: No se permite mover la carpeta raíz (" << rootname << ").\n";
             return;
         }
 
@@ -707,13 +799,13 @@ void load(const string& filename = "filesystem.json") {
         // 2. Encuentra el nodo destino
         Node* destParent = findNodeByPath(destPath);
         if (!destParent) {
-            cout << "\tERROR: Ruta de destino '" << destPath << "' no encontrada.\n";
+            cout << "ERROR: Ruta de destino '" << destPath << "' no encontrada.\n";
             return;
         }
 
         // Verifica que sea una carpeta
         if (destParent->tipo != "folder") {
-             cout << "\tERROR: El destino '" << destPath << "' no es una carpeta.\n";
+             cout << "ERROR: El destino '" << destPath << "' no es una carpeta.\n";
              return;
         }
 
@@ -721,11 +813,22 @@ void load(const string& filename = "filesystem.json") {
         Node* current = destParent;
         while (current != nullptr) {
             if (current == sourceNode) {
-                cout << "\tERROR: No se puede mover un elemento a sí mismo o a un subdirectorio.\n";
+                cout << "ERROR: No se permite mover a un subdirectorio o a si mismo.\n";
                 return;
             }
             current = current->parent;
         }
+
+        // Evita duplicidad de nombres
+        for (Node* sibling : destParent->children) {
+            if (sibling->nombre == sourceNode->nombre) {
+                cout << "ERROR: Ya existe un '" << sourceNode->nombre << "' en el directorio: " << destPath << "\n";
+                return;
+            }
+        }
+
+        // Obtiene la RUTA ANTIGUA antes de la desconexión
+        string oldPath = getFullPath(sourceNode);
 
         // 3. Desconectar: Elimina el sourceNode del vector children de su padre original
         auto& children_list = oldParent->children;
@@ -741,8 +844,11 @@ void load(const string& filename = "filesystem.json") {
         sourceNode->parent = destParent;
         destParent->children.push_back(sourceNode);
 
-        cout << "\tMovido exitosamente: '" << sourcePath << "' a '" << destPath << "'.\n";
-        rebuildTrie();
+        // Elimina la entrada antigua y pone la nueva
+        fileTrie.remove(oldPath);
+        fileTrie.insert(getFullPath(sourceNode), sourceNode->id);
+
+        cout << "Movido exitosamente: '" << sourcePath << "' a '" << destPath << "'.\n";
     }
 
     // CONSULTAR ESTADO DE TRASH
@@ -758,17 +864,20 @@ void load(const string& filename = "filesystem.json") {
         Node* nodeToRemove = findNodeByPath(path);
 
         if (!nodeToRemove) {
-        cout << "\tERROR: Ruta '" << path << "' no encontrada.\n";
+        cout << "ERROR: Ruta '" << path << "' no encontrada.\n";
         return;
         }
 
         // La raíz no debe ser eliminada
         if (nodeToRemove == root) {
-            cout << "\tERROR: No se puede eliminar la carpeta raíz (" << rootname << ").\n";
+            cout << "ERROR: No se permite eliminar la carpeta raíz (" << rootname << ").\n";
             return;
         }
 
         Node* oldParent = nodeToRemove->parent;
+
+        // Obtiene la RUTA antes de la desconexión
+        string oldPath = getFullPath(nodeToRemove);
 
         // 2. Desconexión: Elimina el nodo del vector children de su padre original
         auto& children_list = oldParent->children;
@@ -786,120 +895,79 @@ void load(const string& filename = "filesystem.json") {
         trash.push_back(trashItem); // Añadimos al vector temporal
         nodeToRemove->parent = nullptr; // Limpia la referencia al padre
 
-        cout << "\tElemento '" << nodeToRemove->nombre << "' movido a la papelera.\n";
-        rebuildTrie();
-        //saveTrash();
+        cout << "Elemento '" << nodeToRemove->nombre << "' movido a la papelera.\n";
 
-        /* Milton, para quitar el autoguardado de la papelera,
-           solo debes activar esta linea de arriba. Okei - Milton*/
+        // Quita la entrada del Trie
+        fileTrie.remove(oldPath);
     }
 
     /*-----------------------------------
         RESTORE-ID (Restaurar por ID)
     -----------------------------------*/
-    void restoreID(int id) {
-        // 1. Busca el elemento por ID en la papelera
-        auto it = trash.begin();
-        bool found = false;
+    void restoreID(int id, const string& destPath) {
 
-        while (it != trash.end()) {
-            if (it->node->id == id) {
-                found = true;
-                break;
-            }
+        // 1. Búsqueda y Extracción del elemento de la papelera (O(N) en el vector)
+        auto it = trash.begin();
+        while (it != trash.end() && it->node->id != id) {
             ++it;
         }
 
-        if (!found) {
-            cout << "\tERROR: El ID " << id << " no existe en la papelera.\n";
+        if (it == trash.end()) {
+            cout << "ERROR: ID " << id << " no existe en la papelera.\n";
             return;
         }
 
-        // 2. Copia el elemento encontrado en bin y lo remueve despues de pegarlo
         TrashNode trashItem = *it;
         trash.erase(it);
 
         Node* nodeToRestore = trashItem.node;
-
-        // Aquí busca el puntero en memoria del nodo padre usando el ID para reinsertarlo
-        Node* originalParent = AuxNodeID(root, trashItem.originalParentID);
-
+        Node* newParent = nullptr;
         string newName = nodeToRestore->nombre;
-        string newParentRute = "";
-        bool conflict = false;
+        string finalDestPath = destPath;
 
-        // OJO: El padre debe existir en la raíz del árbol principal
-        if (!originalParent) {
-            cout << "\tERROR: No se puede restaurar el elemento '" << nodeToRestore->nombre
-            << "'. El padre original (ID: " << trashItem.originalParentID << ") ya no existe.\n\n";
 
-            cout << "\tIngrese una NUEVA RUTA para restaurar el elemento (o escriba 'Exit' para cancelar): ";
+        // 2. Determina el padre a restaurar
 
-                do {
-                    conflict = false;
+        if (finalDestPath.empty()) {
+            // 2A: Restaura en la ruta original (Si 'destPath' = "")
+            newParent = AuxNodeID(root, trashItem.originalParentID);
 
-                    // Usa el nuevo PATH para encontrar un Nodo sustituto
-                    cin >> newParentRute;
-                    originalParent = findNodeByPath(newParentRute);
+            if (!newParent) {
+                // Si el padre original ya no existe
+                cout << "ERROR: Padre original (ID: " << trashItem.originalParentID << ") ya no existe.\n";
+                trash.push_back(trashItem);
+                return;
+            }
+            finalDestPath = getFullPath(newParent); // Para el caso de éxito
 
-                    if (!originalParent) {
-                        cout << "\n\tERROR: Ruta de restauracion '" << newParentRute << "' no encontrada.\n";
-                        cout << "\t Intente otra vez (o escriba 'Exit' para cancelar): ";
-                        conflict = true;
-                    }
+        } else {
+            // 2B: Restaurar en la nueva ruta especificada
+            newParent = findNodeByPath(finalDestPath);
 
-                    if (newParentRute == "Exit") {
-                        trash.push_back(trashItem); // Devuelve el nodo a la papelera
-                        cout << "\n\t Restauración cancelada. El elemento sigue en la papelera.\n";
-                        return; // Regresa al Menú
-                    }
-
-                } while (conflict); // Repite mientras haya conflicto
-            return;
+            if (!newParent) {
+                cout << "ERROR: Ruta de destino '" << finalDestPath << "' no encontrada.\n";
+                trash.push_back(trashItem);
+                return;
+            }
         }
 
-        if (originalParent) {
-            do {
-                conflict = false;
-
-                // Asegura que el padre original no tenga un elemento con el mismo nombre
-                for (Node* sibling : originalParent->children) {
-                    if (sibling->nombre == newName) {
-                        cout << "\tADVERTENCIA: Ya existe un elemento llamado '" << newName << "' en el directorio de destino.\n";
-                        cout << "\tIngrese un NUEVO NOMBRE para restaurar el elemento (o escriba 'Exit' para cancelar): ";
-                        cin >> newName;
-                        conflict = true;
-                        break;
-                    }
-                }
-
-                if (newName == "Exit") {
-                        trash.push_back(trashItem); // Devuelve el nodo a la papelera
-                        cout << "\n\t Restauración cancelada. El elemento sigue en la papelera.\n";
-                        return; // Regresa al Menú
-                    }
-                } while (conflict); // Repite mientras haya conflicto
-
-            // Si el nombre se cambió, actualizar el nodo
-            if (newName != nodeToRestore->nombre) {
-                nodeToRestore->nombre = newName;
-                cout << "\tElemento renombrado a '" << newName << "' durante la restauración.\n";
+        // 3. Verifica duplicidad (Igual para ambas opciones)
+        for (Node* sibling : newParent->children) {
+            if (sibling->nombre == newName) {
+                cout << "ERROR: Ya existe '" << newName << "' en la ruta destino: " << finalDestPath << "\n";
+                trash.push_back(trashItem);
+                return;
             }
-
-            // Actualiza el nodo si el nombre se cambió durante el proceso
-            if (newName != nodeToRestore->nombre) {
-                nodeToRestore->nombre = newName;
-                cout << "\tElemento renombrado a '" << newName << "' durante la restauración.\n";
-            }
-
-            // 3. Reconexión
-            nodeToRestore->parent = originalParent;
-            originalParent->children.push_back(nodeToRestore);
-
-            cout << "\tElemento '" << nodeToRestore->nombre << "' restaurado exitosamente a: " << getFullPath(originalParent) << "\n";
-            rebuildTrie();
-            //saveTrash();
         }
+
+        // 4. En caso de exito
+        nodeToRestore->parent = newParent;
+        newParent->children.push_back(nodeToRestore);
+
+        cout << "Elemento '" << nodeToRestore->nombre << "' restaurado exitosamente a: " << finalDestPath << "\n";
+
+        // 5. Optimización del Trie
+        fileTrie.insert(getFullPath(nodeToRestore), nodeToRestore->id);
     }
 
     /*---------------------------------------------
@@ -916,7 +984,7 @@ void load(const string& filename = "filesystem.json") {
         }
 
         if (it == trash.end()) {
-            cout << "\tERROR: El ID " << id << " no existe en la papelera.\n";
+            cout << "ERROR: El ID " << id << " no existe en la papelera.\n";
             return;
         }
 
@@ -928,9 +996,7 @@ void load(const string& filename = "filesystem.json") {
 
         trash.erase(it); // Elimina el elemento de la lista 'trash'
 
-        cout << "\tElemento '" << name << "' (ID: " << id << ") eliminado permanentemente.\n";
-
-        //saveTrash();
+        cout << "Elemento '" << name << "' (ID: " << id << ") eliminado para SIEMPRE.\n";
     }
 
     /*-------------------------------------
@@ -938,7 +1004,7 @@ void load(const string& filename = "filesystem.json") {
     -------------------------------------*/
     void emptyTrash() {
         if (trash.empty()) {
-            cout << "\n\tLa papelera ya esta vacia.\n";
+            cout << "\nLa papelera ya esta vacia.\n";
             return;
         }
 
@@ -950,9 +1016,7 @@ void load(const string& filename = "filesystem.json") {
         // 2. Limpia el vector (los TrashNode)
         trash.clear();
 
-        cout << "\n\tPapelera vaciada permanentemente.\n";
-        rebuildTrie();
-        //saveTrash();
+        cout << "\nPapelera vaciada para SIEMPRE.\n";
     }
 
     /*--------------------------------
@@ -960,7 +1024,7 @@ void load(const string& filename = "filesystem.json") {
     --------------------------------*/
     void lsTrash() {
         if (trash.empty()) {
-            cout << "\tLa papelera esta vacia.\n";
+            cout << "La papelera esta vacia.\n";
             return;
         }
 
@@ -983,7 +1047,7 @@ void load(const string& filename = "filesystem.json") {
     void ls(const string& path) {
         Node* node = findNodeByPath(path);
         if (!node) {
-            cout << "\tRuta no encontrada.\n";
+            cout << "Ruta no encontrada.\n";
             return;
         }
 
@@ -1013,7 +1077,7 @@ void load(const string& filename = "filesystem.json") {
 
         string fullPath;
         for (auto& p : parts) {
-            if (p != rootname) fullPath += "/";
+            fullPath += "/";
             fullPath += p;
         }
         return fullPath;
@@ -1050,133 +1114,186 @@ void load(const string& filename = "filesystem.json") {
     FLUJO
 -----------*/
 
-void Mkdir(auto& fs) {
+void Mkdir(auto& fs, stringstream& args) {
     string path, name;
-    cout << "\tRuta del padre: ";
-    cin >> path;
-    cout << "\tNombre de la carpeta: ";
-    cin >> name;
+
+    // Extrae los argumentos necesarios
+    if (!(args >> path >> name)) {
+        cout << "ERROR! - Sintaxis: MKDIR [Ruta del Padre] [Nombre]\n";
+        return;
+    }
+
+    // Aplica la validación de caracteres prohibidos
+    if (Utils::ContainsIlegal(name)) { // ❗ Llama a la nueva función
+        cout << "ERROR: Nombre contiene caracteres prohibidos\n";
+        return;
+    }
+
+    // Ejecuta la función per se
     fs.mkdir(path, name);
-
 }
 
-void Touch(auto& fs) {
+void Touch(auto& fs, stringstream& args) {
     string path, name;
-    cout << "\tRuta del padre: ";
-    cin >> path;
-    cout << "\tNombre del archivo: ";
-    cin >> name;
+
+    if (!(args >> path >> name)) {
+        cout << "ERROR! - Sintaxis: TOUCH [Ruta del Padre] [Nombre]\n";
+        return;
+    }
+
+    if (Utils::ContainsIlegal(name)) {
+        cout << "ERROR: Nombre contiene caracteres prohibidos\n";
+        return;
+    }
+
     fs.touch(path, name);
-
 }
 
-void Renombrar(auto& fs) {
+void Renombrar(auto& fs, stringstream& args) {
     string path, newName;
-    cout << "\tRuta del nodo a renombrar: ";
-    cin >> path;
-    cout << "\tNuevo nombre: ";
-    cin >> newName;
-    fs.renameNode(path, newName);
 
+    if (!(args >> path >> newName)) {
+        cout << "ERROR! - Sintaxis: RN [Ruta] [Nuevo Nombre]\n";
+        return;
+    }
+
+    if (Utils::ContainsIlegal(newName)) {
+        cout << "ERROR: Nuevo nombre contiene caracteres prohibidos\n";
+        return;
+    }
+
+    fs.renameNode(path, newName);
 }
 
-void Mover(auto& fs) {
+void Mover(auto& fs, stringstream& args) {
     string sourcePath, destPath;
-    cout << "\tRuta de ORIGEN (a mover): ";
-    cin >> sourcePath;
-    cout << "\tRuta de DESTINO (padre): ";
-    cin >> destPath;
-    cout << "\n";
+
+    if (!(args >> sourcePath >> destPath)) {
+        cout << "ERROR! - Sintaxis: MV [Ruta Origen] [Ruta Destino]\n";
+        return;
+    }
+
     fs.mv(sourcePath, destPath);
 
 }
 
-void Eliminar(auto& fs) {
+void Eliminar(auto& fs, stringstream& args) {
     string path;
-    cout << "\tRuta del nodo a ELIMINAR: ";
-    cin >> path;
+    if (!(args >> path)) {
+        cout << "ERROR! - Sintaxis: RM [Ruta del Nodo]\n";
+        return;
+    }
     fs.rm(path);
 }
 
-void Restore(auto& fs) {
-    // 1. Muestra la papelera saber qué IDs están disponibles
-    fs.lsTrash();
-
-    if (!fs.isTrashEmpty()) {
-        int id;
-        cout << "\tIngrese el ID del elemento a restaurar (0 para cancelar): "; cin >> id;
-
-        if (id != 0) {
-            // 2. Comienza la consulta de restauración
-            fs.restoreID(id);
-        } else {
-            cout << "\tRestauración cancelada.\n";
-        }
-    }
-
-}
-
-void Ls(auto& fs) {
-    string path;
-    cout << "\tRuta: ";
-    cin >> path;
-    fs.ls(path);
-}
-
-void FullRute(auto& fs) {
-    int id;
-    cout << "\tIngresa ID a Buscar: ";
-    if (!(cin >> id)) { // Verificar entrada válida
-        cout << "\n\tID invalido.\n";
-        cin.clear(); // Validación temporal...
+void Restore(auto& fs, stringstream& args) {
+    if (fs.isTrashEmpty()) {
+        cout << "Papelera vacía - Sin elementos a restaurar.\n";
         return;
     }
 
-    // 1. Encuentra el 'nodo' mediante un ID
+    int id = 0;
+    string idStr, newParentRute = ""; // Inicializada a vacío
+
+    // Lectura del ID (Obligatorio)
+    if (!(args >> idStr)) {
+        cout << "ERROR! Sintaxis: RS [ID] [Ruta Destino (opcional)]\n";
+        return;
+    }
+
+    try {
+        id = stoi(idStr);
+    } catch (...) {
+        cout << "ERROR: ID no válido o fuera de rango.\n";
+        return;
+    }
+
+    if (id <= 0) {
+        cout << "ERROR: ID [" << id << "] inválido - Se requiere ID positivo.\n";
+        return;
+    }
+
+    // Lectura de la Ruta de Destino (Opcional)
+    args >> newParentRute;
+
+    // Ejecuta la restauración
+    fs.restoreID(id, newParentRute);
+}
+
+void Ls(auto& fs, stringstream& args) {
+    string path;
+
+    if (!(args >> path)) {
+        cout << "ERROR! - Sintaxis: LS [Ruta]\n";
+        return;
+    }
+
+    fs.ls(path);
+}
+
+void FullRute(auto& fs, stringstream& args) {
+    int id;
+    string idStr;
+
+    if (!(args >> idStr)) {
+        cout << "ERROR! - Sintaxis: FR [ID]\n";
+        return;
+    }
+
+    try {
+        id = stoi(idStr);
+    } catch (...) {
+        cout << "ERROR: ID no válido o fuera de rango.\n";
+        return;
+    }
+
     Node* nodo = fs.JmpAuxID(id);
 
     if (nodo) {
-        // 2. Obtiene el string de la 'ruta' mediante el nodo obtenido
-        cout << "\tRuta: " << fs.getFullPath(nodo) << "\n";
+        cout << "Ruta: " << fs.getFullPath(nodo) << "\n";
     } else {
-        cout << "\n\tERROR: ID [ " << id << " ] no encontrado.\n";
+        cout << "\nERROR: ID [ " << id << " ] no encontrado.\n";
     }
 }
 
-void DelID(auto& fs) {
-    fs.lsTrash();
-    if (fs.isTrashEmpty()) return;
-
-    int id;
-    cout << "\n\tIngrese el ID del elemento a ELIMINAR permanentemente (0 para cancelar): ";
-    cin >> id;
-
-    if (id != 0) {
-        fs.delID(id);
-    } else {
-        cout << "\n\tBorrado cancelado.\n";
+void DelID(auto& fs, stringstream& args) {
+    if (fs.isTrashEmpty()) {
+        cout << "Papelera vacía - Sin elementos a restaurar.\n";
+        return;
     }
 
+    int id = 0;
+    string idStr;
+
+    if (!(args >> idStr)) {
+        cout << "ERROR! - Sintaxis: BDEL [ID]\n";
+        return;
+    }
+
+    // Validación que ID sea mayor a 0
+    try {
+        id = stoi(idStr);
+    } catch (...) {
+        cout << "ERROR: ID no válido o fuera de rango.\n";
+        return;
+    }
+
+    if (id <= 0) {
+        cout << "ERROR: ID [" << id << "] inválido - Se requiere ID positivo.\n";
+        return;
+    }
+
+    // Ejecuta la eliminación permanente
+    fs.delID(id);
 }
 
 void Empty(auto& fs) {
     if (fs.isTrashEmpty()) {
-        cout << "\tLa papelera ya esta vacia.\n";
+        cout << "Papelera ya esta vacia.\n";
         return;
     }
 
-    char confirm = '0';
-    cout << "\tADVERTENCIA: ¿Desea vaciar PERMANENTEMENTE la papelera completa? (S/N): ";
-
-    do {
-        cin >> confirm;
-        if (toupper(confirm) == 'S') {
-            fs.emptyTrash();
-        } else if (toupper(confirm) == 'N') {
-            cout << "\n\tVaciado cancelado.\n";
-        }
-    } while (toupper(confirm) != 'S' && toupper(confirm) != 'N');
-
+    fs.emptyTrash();
 }
 
 void Guardar(auto& fs) {
@@ -1184,39 +1301,68 @@ void Guardar(auto& fs) {
     fs.save(filename);
 }
 
-void Search(auto& fs) {
+void Search(auto& fs, stringstream& args) {
     string prefix;
-    cout << "\tIngrese el prefijo (ruta/nombre) a buscar: ";
-    cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Limpia el buffer antes de leer la línea
-    getline(cin, prefix);
 
-    // 1. Llama al método de la clase FileSystemTree
+    if (!(args >> prefix)) {
+        cout << "ERROR! - Sintaxis: SR [Prefijo/Ruta]\n";
+        return;
+    }
+
+    // Llama al método de la clase FileSystemTree
     fs.search(prefix);
+}
+
+void Help(auto& fs) {
+    system("cls");
+    cout << "\n==================================== SINTAXIS DE COMANDOS ====================================\n\n";
+    cout << "Todos los comandos deben separar sus argumentos por espacios.\n\n";
+
+    cout << " [MKDIR]  'mkdir [RUTA_PADRE] [NOMBRE]'\t\tCrea una nueva carpeta.\n";
+    cout << " [TOUCH]  'touch [RUTA_PADRE] [NOMBRE]'\t\tCrea un nuevo archivo.\n";
+    cout << " [RN]     'rn [RUTA] [NUEVO_NOMBRE]'\t\tRenombra un archivo o carpeta.\n";
+    cout << " [MV]     'mv [RUTA_ORIGEN] [RUTA_DESTINO]'\tMueve un elemento a un nuevo padre.\n";
+    cout << " [RM]     'rm [RUTA]'\t\t\t\tElimina un elemento (mueve a papelera).\n";
+    cout << " [LS]     'ls [RUTA]'\t\t\t\tLista los hijos directos de una carpeta.\n";
+    cout << " [SR]     'sr [PREFIJO/RUTA]'\t\t\tBusca nodos que coincidan con el prefijo.\n\n";
+
+    cout << " [FR]     'fr [ID]'\t\t\t\tMuestra la ruta completa de un nodo por ID.\n";
+    cout << " [PREORD] 'preord'\t\t\t\tMuestra el árbol completo en preorden.\n";
+    cout << " [SAVE]   'save'\t\t\t\tGuarda el sistema de archivos a JSON.\n\n";
+
+    cout << " [BCHECK] 'bcheck'\t\t\t\tLista elementos en la papelera.\n";
+    cout << " [RS]     'rs [ID]'\t\t\t\tRestaura un elemento de la papelera por ID.\n";
+    cout << " [BDEL]   'bdel [ID]'\t\t\t\tElimina permanentemente un elemento por ID.\n";
+    cout << " [BCLEAR] 'bclear'\t\t\t\tVacía permanentemente la papelera.\n\n";
+
+    cout << " [HELP]   'help'\t\t\t\tMuestra esta ayuda.\n";
+    cout << " [EXIT]   'exit'\t\t\t\tCierra el programa.\n\n";
+    cout << "==============================================================================================\n";
 }
 
 /*---------------
     VISUALES
 ---------------*/
 void Pausa() {
-    cout << "\n\n\tContinuar...";
+    cout << "\n\nContinuar...";
     cin.ignore(numeric_limits<streamsize>::max(),'\n');
 }
 
-void MenuSelect(string& Option) {
+void MenuSelect() {
     system("cls");
-    cout << "\n================= MENU =================\n\n";
-    cout <<   "[MKDIR] Crear carpeta.\t[TOUCH] Crear archivo.\n";
-    cout <<   "[RN] Renombrar\t\t[RM] Mover\n";
-    cout <<   "[DEL] Eliminar\t\t[BCHECK] Ver Papelera\n";
-    cout <<   "[RS] Restaurar.\t\t[LS] Ver Hijos.\n";
-    cout <<   "[FR] Ruta Completa\t[PREORD] Preorden\n";
-    cout <<   "[BDEL] Vaciar Elemento\t[BCLEAR] Vaciar Papelera\n";
-    cout <<   "[SAVE] Guardar\t\t[SR] Buscar\n";
-
-    cout <<   "[EXIT] Salir\n";
-    cout << "\n========================================\n\n";
-    cout <<   "\tIngresa una Opcion: "; cin >> Option;
-    cout << "\n";
+    cout << "\n====================== MENU ======================\n\n";
+    cout <<   "[MKDIR] Crear carpeta\t[TOUCH] Crear archivo\n";
+    cout <<   "[RN] Renombrar\t\t[MV] Mover\n";
+    cout <<   "[RM] Eliminar\t\t[SAVE] Guardar\n";
+    cout <<   "\n";
+    cout <<   "[SR] Buscar\t\t[PREORD] Preorden\n";
+    cout <<   "[FR] Ruta Completa\t[LS] Ver Hijos\n";
+    cout <<   "\n";
+    cout <<   "[RS] Restaurar\t\t[BDEL] Vaciar Elemento\n";
+    cout <<   "[BCHECK] Ver Papelera\t[BCLEAR] Vaciar Papelera\n";
+    cout <<   "\n\n";
+    cout <<   "[HELP] Ayuda\t\t[EXIT] Salir\n";
+    cout << "\n==================================================\n\n";
 }
 
 /*===========================
@@ -1231,29 +1377,40 @@ int main() {
     fs.load("filesystem.json"); // Carga el Arbol desde la memoria
     Pausa();
 
+    string Command;
     string Option;
 
     do {
-        MenuSelect(Option);
+        MenuSelect();
 
-             if (Option == "MKDIR") {Mkdir(fs);}
-        else if (Option == "TOUCH") {Touch(fs);}
-        else if (Option == "RN") {Renombrar(fs);}
-        else if (Option == "RM") {Mover(fs);}
-        else if (Option == "DEL") {Eliminar(fs);}
+        cout << " [" << UserName << "]: ";
+        // Lee la línea completa
+        getline(cin, Command);
+        cout << "\n";
+        // Usa un stringstream para dividir en trozos
+        stringstream ss(Command);
+        ss >> Option; // Extrae el primer token (MKDIR, TOUCH, etc.)
+        Utils::Mayus(Option);
+
+             if (Option == "MKDIR") {Mkdir(fs,ss);}
+        else if (Option == "TOUCH") {Touch(fs,ss);}
+        else if (Option == "RN") {Renombrar(fs,ss);}
+        else if (Option == "MV") {Mover(fs,ss);}
+        else if (Option == "RM") {Eliminar(fs,ss);}
         else if (Option == "BCHECK") {fs.lsTrash();}
-        else if (Option == "RS") {Restore(fs);}
-        else if (Option == "LS") {Ls(fs);}
-        else if (Option == "FR") {FullRute(fs);}
+        else if (Option == "RS") {Restore(fs,ss);}
+        else if (Option == "LS") {Ls(fs,ss);}
+        else if (Option == "FR") {FullRute(fs,ss);}
         else if (Option == "PREORD") {fs.printPreorder();}
-        else if (Option == "BDEL") {DelID(fs);}
+        else if (Option == "BDEL") {DelID(fs,ss);}
         else if (Option == "BCLEAR") {Empty(fs);}
         else if (Option == "SAVE") {Guardar(fs);}
-        else if (Option == "SR") {Search(fs);}
-        else if (Option == "EXIT") {cout << "\tAdios :D\n";}
-        else {cout << "\n\tOpcion invalida.\n";}
+        else if (Option == "SR") {Search(fs,ss);}
+        else if (Option == "HELP") {Help(fs);}
+        else if (Option == "EXIT") {cout << " [SYNE]: Adiós, " << UserName << "...\n";}
+        else {cout << "\nERROR! - Usa HELP para obtner la lista de comandos.\n";}
 
-        if (Option != "EXIT") {Pausa(); cin.ignore();}
+        if (Option != "EXIT") {Pausa();}
 
     } while (Option != "EXIT");
     return 0;
