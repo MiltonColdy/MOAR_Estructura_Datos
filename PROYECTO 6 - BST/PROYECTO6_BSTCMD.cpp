@@ -1408,7 +1408,7 @@ int main() {
         else if (Option == "SR") {Search(fs,ss);}
         else if (Option == "HELP") {Help(fs);}
         else if (Option == "EXIT") {cout << " [SYNE]: Adiós, " << UserName << "...\n";}
-        else {cout << "\nERROR! - Usa HELP para obtner la lista de comandos.\n";}
+        else {cout << "\nERROR! - Usa HELP para obtener la lista de comandos.\n";}
 
         if (Option != "EXIT") {Pausa();}
 
