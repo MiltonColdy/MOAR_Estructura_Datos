@@ -1497,15 +1497,15 @@ void Help(auto& fs) {
     cout << " [SAVE]   'save'\t\t\t\tGuarda el sistema de archivos a JSON.\n\n";
 
     cout << " [SR]     'sr [PREFIJO/RUTA]'\t\t\tBusca nodos que coincidan con el prefijo.\n";
-    cout << " [PRD]    'prd'\t\t\t\tMuestra el árbol completo en preorden.\n";
+    cout << " [PRD]    'prd'\t\t\t\t\tMuestra el árbol completo en preorden.\n";
     cout << " [FR]     'fr [ID]'\t\t\t\tMuestra la ruta completa de un nodo por ID.\n";
     cout << " [LS]     'ls [RUTA]'\t\t\t\tLista los hijos directos de una carpeta.\n";
-    cout << " [CN]     'cn [RUTA]'\t\tCuenta nodos desde una ruta como raíz.\n\n";
+    cout << " [CN]     'cn [RUTA]'\t\t\t\tCuenta nodos desde una ruta como raíz.\n\n";
 
-    cout << " [CKB]    'ckb'\t\t\t\tLista elementos en la papelera.\n";
+    cout << " [CKB]    'ckb'\t\t\t\t\tLista elementos en la papelera.\n";
     cout << " [RS]     'rs [ID]'\t\t\t\tRestaura un elemento de la papelera por ID.\n";
     cout << " [DLB]    'dlb [ID]'\t\t\t\tElimina permanentemente un elemento por ID.\n";
-    cout << " [CLB]    'clb'\t\t\t\tVacía permanentemente la papelera.\n\n";
+    cout << " [CLB]    'clb'\t\t\t\t\tVacía permanentemente la papelera.\n\n";
 
     cout << " [TEST]   'test'\t\t\t\tInicia las pruebas de rendimiento.\n\n";
 
