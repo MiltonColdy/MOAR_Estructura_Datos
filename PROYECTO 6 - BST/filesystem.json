@@ -6,19 +6,34 @@
           {
             "children": [],
             "contenido": "",
-            "id": 2,
-            "nombre": "Banana",
+            "id": 10005,
+            "nombre": "Manzana.obj",
             "tipo": "file"
           },
           {
             "children": [],
-            "id": 4,
-            "nombre": "Coco",
-            "tipo": "folder"
+            "contenido": "",
+            "id": 10006,
+            "nombre": "Limon.obj",
+            "tipo": "file"
+          },
+          {
+            "children": [],
+            "contenido": "",
+            "id": 10007,
+            "nombre": "Naranja.obj",
+            "tipo": "file"
+          },
+          {
+            "children": [],
+            "contenido": "",
+            "id": 10008,
+            "nombre": "Granada.obj",
+            "tipo": "file"
           }
         ],
-        "id": 1,
-        "nombre": "Chango",
+        "id": 10002,
+        "nombre": "Arbol",
         "tipo": "folder"
       },
       {
@@ -26,13 +41,41 @@
           {
             "children": [],
             "contenido": "",
-            "id": 9,
-            "nombre": "Cla",
+            "id": 10009,
+            "nombre": "Platano.obj",
+            "tipo": "file"
+          },
+          {
+            "children": [],
+            "contenido": "",
+            "id": 10010,
+            "nombre": "Coco.obj",
             "tipo": "file"
           }
         ],
-        "id": 5,
-        "nombre": "Chan",
+        "id": 10003,
+        "nombre": "Palma",
+        "tipo": "folder"
+      },
+      {
+        "children": [
+          {
+            "children": [],
+            "contenido": "",
+            "id": 10011,
+            "nombre": "Piñon.obj",
+            "tipo": "file"
+          },
+          {
+            "children": [],
+            "contenido": "",
+            "id": 10012,
+            "nombre": "Nuez.obj",
+            "tipo": "file"
+          }
+        ],
+        "id": 10004,
+        "nombre": "Pino",
         "tipo": "folder"
       }
     ],
@@ -40,22 +83,5 @@
     "nombre": "S:",
     "tipo": "folder"
   },
-  "trash": [
-    {
-      "node": {
-        "children": [
-          {
-            "children": [],
-            "id": 8,
-            "nombre": "Bolsa",
-            "tipo": "folder"
-          }
-        ],
-        "id": 7,
-        "nombre": "Basurero",
-        "tipo": "folder"
-      },
-      "parent": 0
-    }
-  ]
+  "trash": []
 }

@@ -10,6 +10,10 @@
 #include <algorithm>
 #include <cctype>
 #include <limits>
+#include <chrono>
+#include <cstdlib>
+#include <unordered_map>
+
 #include "json.hpp"
 
 // SIMPLIFICACIONES DE ESCRITURA
@@ -34,6 +38,12 @@ namespace Utils {
             }
         }
         return false;
+    }
+
+    using namespace std::chrono;
+
+    long long getCurrentTimeMs() {
+        return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
     }
 }
 
@@ -486,7 +496,7 @@ public:
         if (file.is_open()) {
             file << main_j.dump(2); // Guarda el objeto completo
             file.close();
-            cout << "\tSistema de archivos (root y papelera) guardado en: " << filename << "\n";
+            cout << "Sistema de archivos (root y papelera) guardado en: " << filename << "\n";
         } else {
             cout << "\tERROR: No se pudo abrir el archivo para guardar.\n";
         }
@@ -505,87 +515,88 @@ public:
         nextID = 1;
         FileSystemTree fs;
         fs.save(filename); // Guarda en memoria el nodo vacío (necesario)
+        cout << "\t";
     }
 
     /*---------------------------------
         CARGAR EL ESTADO DEL ÁRBOL
     ---------------------------------*/
-void load(const string& filename = "filesystem.json") {
+    void load(const string& filename = "filesystem.json") {
 
-    // 1. Limpieza Inicial de seguridad
-    deleteNodes(root);
-    // Limpia la memoria de los nodos en la papelera antes de cargar.
-    for (const auto& item : trash) {
-        deleteNodes(item.node);
-    }
-    trash.clear();
-    root = nullptr;
+        // 1. Limpieza Inicial de seguridad
+        deleteNodes(root);
+        // Limpia la memoria de los nodos en la papelera antes de cargar.
+        for (const auto& item : trash) {
+            deleteNodes(item.node);
+        }
+        trash.clear();
+        root = nullptr;
 
-    ifstream file(filename);
+        ifstream file(filename);
 
-    cout << "\n===================================================================\n\n";
+        cout << "\n===================================================================\n\n";
 
-    if (!file.is_open()) {
-        // Si no encuentra guardado, llama al repair.
-        cout << "\tAVISO: Archivo " << filename << " no encontrado. Creando sistema vacío...\n";
-        repair(filename); // Usamos repair(filename) para que use el nombre correcto.
-        cout << "\n\tLa papelera está vacía.\n";
-        cout << "\n===================================================================================";
-        return; // Termina la función.
-    }
-
-    try {
-        json j = json::parse(file);
-        file.close();
-
-        // 3.1. Cargar el Árbol Principal (Root)
-        if (j.count("root")) { // Verifica que la clave "root" exista
-            from_json(j.at("root"), root);
-        } else {
-            // Si no tiene "root", crea uno vacío.
-            repair(filename);
-            cout << "\n\tADVERTENCIA: Archivo JSON sin clave 'root' - Creando sistema vacío.\n";
-            return;
+        if (!file.is_open()) {
+            // Si no encuentra guardado, llama al repair.
+            cout << "\tAVISO: Archivo " << filename << " no encontrado. Creando sistema vacío...\n";
+            repair(filename); // Usamos repair(filename) para que use el nombre correcto.
+            cout << "\n\tLa papelera está vacía.\n";
+            cout << "\n===================================================================================";
+            return; // Termina la función.
         }
 
-        // 3.2. Cargar la Papelera (Trash)
-        if (j.count("trash")) { // Verifica que la clave "trash" exista
-            for (const auto& j_item : j.at("trash")) {
-                TrashNode item;
-                from_json(j_item, item); // Cargamos usando from_json(TrashNode)
-                trash.push_back(item);
+        try {
+            json j = json::parse(file);
+            file.close();
+
+            // 3.1. Cargar el Árbol Principal (Root)
+            if (j.count("root")) { // Verifica que la clave "root" exista
+                from_json(j.at("root"), root);
+            } else {
+                // Si no tiene "root", crea uno vacío.
+                repair(filename);
+                cout << "\n\tADVERTENCIA: Archivo JSON sin clave 'root' - Creando sistema vacío.\n";
+                return;
             }
-            cout << "\tPapelera cargada exitosamente (" << trash.size() << " elementos)\n";
-        }
 
-
-        if (root) {
-            int maxUsedID = findMaxID(root);
-            // Busca IDs en la papelera para asegurar que nextID sea el máximo global
-            for (const auto& item : trash) {
-                maxUsedID = max(maxUsedID, findMaxID(item.node));
+            // 3.2. Cargar la Papelera (Trash)
+            if (j.count("trash")) { // Verifica que la clave "trash" exista
+                for (const auto& j_item : j.at("trash")) {
+                    TrashNode item;
+                    from_json(j_item, item); // Cargamos usando from_json(TrashNode)
+                    trash.push_back(item);
+                }
+                cout << "\tPapelera cargada exitosamente (" << trash.size() << " elementos)\n";
             }
-            rebuildTrie(); // <-- ¡Llamar aquí!
-            nextID = maxUsedID + 1;
+
+
+            if (root) {
+                int maxUsedID = findMaxID(root);
+                // Busca IDs en la papelera para asegurar que nextID sea el máximo global
+                for (const auto& item : trash) {
+                    maxUsedID = max(maxUsedID, findMaxID(item.node));
+                }
+                rebuildTrie(); // <-- ¡Llamar aquí!
+                nextID = maxUsedID + 1;
+            }
+
+            cout << "\tSistema cargado exitosamente desde: " << filename << "\n\n";
+            cout << "\tSiguiente ID de elemento disponible: " << nextID << "\n";
+            cout << "\n===================================================================";
+
+
+        } catch (const nlohmann::json::parse_error& e) {
+
+            cout << "\tERROR: El archivo JSON esta corrupto o mal formado...\n\n"; repair();
+            cout << "\n\tLa papelera está vacía.\n";
+            cout << "\n=====================================================================";
+        } catch (...) {
+
+            cout << "\tERROR desconocido durante la carga...\n"; repair();
+            cout << "\n\tLa papelera está vacía.\n";
+            cout << "\n=====================================================";
         }
-
-        cout << "\tSistema cargado exitosamente desde: " << filename << "\n\n";
-        cout << "\tSiguiente ID de elemento disponible: " << nextID << "\n";
-        cout << "\n===================================================================";
-
-
-    } catch (const nlohmann::json::parse_error& e) {
-
-        cout << "\tERROR: El archivo JSON esta corrupto o mal formado...\n\n"; repair();
-        cout << "\n\tLa papelera está vacía.\n";
-        cout << "\n=====================================================================";
-    } catch (...) {
-
-        cout << "\tERROR desconocido durante la carga...\n"; repair();
-        cout << "\n\tLa papelera está vacía.\n";
-        cout << "\n=====================================================";
     }
-}
 
     /*----------------------------
         ENCONTRAR EL ID MÁXIMO
@@ -832,13 +843,15 @@ void load(const string& filename = "filesystem.json") {
 
         // 3. Desconectar: Elimina el sourceNode del vector children de su padre original
         auto& children_list = oldParent->children;
+        auto it = std::find(children_list.begin(), children_list.end(), sourceNode);
 
-        // Reordena y luego borra todos los punteros a nodos que son iguales a 'sourceNode' dentro de 'oldParent'
-        children_list.erase(
-            remove_if(children_list.begin(), children_list.end(),
-            [sourceNode](Node* n) {return n == sourceNode;}),
-            children_list.end()
-        );
+        if (it != children_list.end()) {
+            children_list.erase(it); // Eliminación directa
+        } else {
+            // En caso de milagros...
+            cout << "ERROR CRITICO! - Nodo de origen no encontrado.\n";
+            return;
+        }
 
         // 4. Reconectar: Añade el sourceNode al nuevo padre
         sourceNode->parent = destParent;
@@ -1104,6 +1117,50 @@ void load(const string& filename = "filesystem.json") {
         for (Node* c : node->children)
             preorder(c);
     }
+
+    int countNodes(Node* startNode) {
+        if (!startNode) return 0;
+
+        int count = 1; // Contar el nodo actual
+        for (Node* child : startNode->children) {
+            count += countNodes(child); // Recursividad
+        }
+        return count;
+    }
+
+    void createRandomTree(Node* baseNode, int N) {
+        if (!baseNode || baseNode->tipo != "folder") return;
+
+        // 1. Usa un vector para mantener la lista de posibles padres (rootNode inicialmente)
+        vector<Node*> possibleParents = { baseNode };
+
+        // 2. Bucle para N iteraciones
+        for (int i = 1; i <= N; ++i) {
+            // Selecciona un padre aleatorio de la lista de nodos ya creados
+            Node* parent = possibleParents[rand() % possibleParents.size()];
+
+            // Generar un nombre único (ej. "n" + ID)
+            string name = "n" + to_string(nextID);
+
+            Node* newNode = new Node();
+            newNode->id = nextID++;
+            newNode->nombre = name;
+            newNode->parent = parent;
+
+            // Decide si crear carpeta o archivo
+            if (rand() % 2 == 0) {
+                newNode->tipo = "folder";
+                parent->children.push_back(newNode);
+                possibleParents.push_back(newNode);
+            } else {
+                newNode->tipo = "file";
+                parent->children.push_back(newNode);
+            }
+
+            // Indexación de Trie: O(L)
+            fileTrie.insert(getFullPath(newNode), newNode->id);
+        }
+    }
 };
 
 /*========================
@@ -1313,6 +1370,120 @@ void Search(auto& fs, stringstream& args) {
     fs.search(prefix);
 }
 
+void Pausa() {
+    cout << "\n\nContinuar...";
+    cin.ignore(numeric_limits<streamsize>::max(),'\n');
+}
+
+void Contar(auto& fs, stringstream& args) {
+    string path;
+
+    if (!(args >> path)) {
+        cout << "ERROR! - Sintaxis: CN [Ruta]\n";
+        return;
+    }
+
+    Node* n = fs.findNodeByPath(path);
+    if (!n) {
+        cout << "ERROR! - Ruta no encontrada.\n";
+    } else {
+        cout << "Total de nodos: " << fs.countNodes(n) << "\n";
+    }
+}
+
+void Test(auto& fs, stringstream& args) {
+    int N;
+    string N_str;
+
+    if (!(args >> N_str)) {
+        cout << "ERROR! - Sintaxis: TEST [Num. de Nodos]\n";
+        return;
+    }
+
+    try {
+        N = stoi(N_str);
+    } catch (...) {
+        cout << "ERROR! - Numero de nodos no válido.\n";
+        return;
+    }
+
+    if (N <= 0) {
+        cout << "ERROR! - El numero de nodos debe ser positivo.\n";
+        return;
+    }
+
+    system("cls");
+    system("color 17");
+
+    long long startTime, endTime;
+
+    // Garantizar que /test existe
+    Node* testRoot = fs.findNodeByPath("/test");
+    if (!testRoot) {
+        fs.mkdir("/", "test");
+        testRoot = fs.findNodeByPath("/test");
+    }
+
+    if (!testRoot) {
+        cout << "\nERROR CRITICO: No se pudo crear /test\n";
+        return;
+    }
+
+    cout << "\n======================================================\n";
+    cout << "\tINICIANDO PRUEBA DE RENDIMIENTO (N = " << N << ")\n";
+    cout <<   "======================================================\n";
+    Pausa(); // Pausa tras cada operación
+
+    // FASE 1: CREACIÓN DEL ÁRBOL (mkdir/touch)
+    cout << "\n[1] Creando arbol de " << N << " nodos...\n";
+    startTime = Utils::getCurrentTimeMs();
+
+    fs.createRandomTree(testRoot, N); // Manda crear los nodos
+    endTime = Utils::getCurrentTimeMs();
+    Guardar(fs);
+
+    cout << "\nTiempo de Creacion: " << (endTime - startTime) << " ms\n";
+    Pausa();
+
+    cout << "\nValidando insercion (Conteos y Estructura)...";
+
+    int count = fs.countNodes(testRoot); // Asumiendo una función de conteo O(N)
+
+    if (count >= N) {
+        cout << "\n" << count << " nodos encontrados en la ruta de prueba.\n";
+    } else {
+         cout << "\nERROR DE VALIDACION: Solo se encontraron " << count << " nodos.\n";
+    }
+
+    Pausa();
+
+
+    // FASE 2: MOVIMIENTO A LA PAPELERA (rm)
+    cout << "\n[2] Moviendo el arbol a la papelera...\n";
+    startTime = Utils::getCurrentTimeMs();
+
+    fs.rm("/test"); // Mueve toda la carpeta raiz de la prueba
+    endTime = Utils::getCurrentTimeMs();
+    Guardar(fs);
+
+    cout << "\nTiempo de Eliminacion (RM): " << (endTime - startTime) << " ms\n";
+    Pausa();
+
+    // FASE 3: ELIMINACIÓN PERMANENTE (emptyTrash)
+    cout << "\n[3] Eliminando permanentemente la papelera...";
+    startTime = Utils::getCurrentTimeMs();
+
+    fs.emptyTrash(); // Elimina PERMANENTEMENTE a la velocidad de O(L)
+    endTime = Utils::getCurrentTimeMs();
+    Guardar(fs);
+
+    cout << "\nTiempo de Vaciado (CLB): " << (endTime - startTime) << " ms\n";
+
+    cout << "\n======================================================\n";
+    cout << "\t\tPRUEBA FINALIZADA\n";
+    cout <<   "======================================================\n";
+}
+
 void Help(auto& fs) {
     system("cls");
     cout << "\n==================================== SINTAXIS DE COMANDOS ====================================\n\n";
@@ -1323,17 +1494,20 @@ void Help(auto& fs) {
     cout << " [RN]     'rn [RUTA] [NUEVO_NOMBRE]'\t\tRenombra un archivo o carpeta.\n";
     cout << " [MV]     'mv [RUTA_ORIGEN] [RUTA_DESTINO]'\tMueve un elemento a un nuevo padre.\n";
     cout << " [RM]     'rm [RUTA]'\t\t\t\tElimina un elemento (mueve a papelera).\n";
-    cout << " [LS]     'ls [RUTA]'\t\t\t\tLista los hijos directos de una carpeta.\n";
-    cout << " [SR]     'sr [PREFIJO/RUTA]'\t\t\tBusca nodos que coincidan con el prefijo.\n\n";
-
-    cout << " [FR]     'fr [ID]'\t\t\t\tMuestra la ruta completa de un nodo por ID.\n";
-    cout << " [PREORD] 'preord'\t\t\t\tMuestra el árbol completo en preorden.\n";
     cout << " [SAVE]   'save'\t\t\t\tGuarda el sistema de archivos a JSON.\n\n";
 
-    cout << " [BCHECK] 'bcheck'\t\t\t\tLista elementos en la papelera.\n";
+    cout << " [SR]     'sr [PREFIJO/RUTA]'\t\t\tBusca nodos que coincidan con el prefijo.\n";
+    cout << " [PRD]    'prd'\t\t\t\tMuestra el árbol completo en preorden.\n";
+    cout << " [FR]     'fr [ID]'\t\t\t\tMuestra la ruta completa de un nodo por ID.\n";
+    cout << " [LS]     'ls [RUTA]'\t\t\t\tLista los hijos directos de una carpeta.\n";
+    cout << " [CN]     'cn [RUTA]'\t\tCuenta nodos desde una ruta como raíz.\n\n";
+
+    cout << " [CKB]    'ckb'\t\t\t\tLista elementos en la papelera.\n";
     cout << " [RS]     'rs [ID]'\t\t\t\tRestaura un elemento de la papelera por ID.\n";
-    cout << " [BDEL]   'bdel [ID]'\t\t\t\tElimina permanentemente un elemento por ID.\n";
-    cout << " [BCLEAR] 'bclear'\t\t\t\tVacía permanentemente la papelera.\n\n";
+    cout << " [DLB]    'dlb [ID]'\t\t\t\tElimina permanentemente un elemento por ID.\n";
+    cout << " [CLB]    'clb'\t\t\t\tVacía permanentemente la papelera.\n\n";
+
+    cout << " [TEST]   'test'\t\t\t\tInicia las pruebas de rendimiento.\n\n";
 
     cout << " [HELP]   'help'\t\t\t\tMuestra esta ayuda.\n";
     cout << " [EXIT]   'exit'\t\t\t\tCierra el programa.\n\n";
@@ -1343,11 +1517,6 @@ void Help(auto& fs) {
 /*---------------
     VISUALES
 ---------------*/
-void Pausa() {
-    cout << "\n\nContinuar...";
-    cin.ignore(numeric_limits<streamsize>::max(),'\n');
-}
-
 void MenuSelect() {
     system("cls");
     cout << "\n====================== MENU ======================\n\n";
@@ -1355,11 +1524,14 @@ void MenuSelect() {
     cout <<   "[RN] Renombrar\t\t[MV] Mover\n";
     cout <<   "[RM] Eliminar\t\t[SAVE] Guardar\n";
     cout <<   "\n";
-    cout <<   "[SR] Buscar\t\t[PREORD] Preorden\n";
+    cout <<   "[SR] Buscar\t\t[PRD] Preorden\n";
     cout <<   "[FR] Ruta Completa\t[LS] Ver Hijos\n";
+    cout <<   "[CN] Cuenta Nodos\n";
     cout <<   "\n";
-    cout <<   "[RS] Restaurar\t\t[BDEL] Vaciar Elemento\n";
-    cout <<   "[BCHECK] Ver Papelera\t[BCLEAR] Vaciar Papelera\n";
+    cout <<   "[RS] Restaurar\t\t[DLB] Vaciar Elemento\n";
+    cout <<   "[CKB] Ver Papelera\t[CLB] Vaciar Papelera\n";
+    cout <<   "\n";
+    cout <<   "[TEST] Inicia Pruebas\n";
     cout <<   "\n\n";
     cout <<   "[HELP] Ayuda\t\t[EXIT] Salir\n";
     cout << "\n==================================================\n\n";
@@ -1381,6 +1553,7 @@ int main() {
     string Option;
 
     do {
+        system("color 07");
         MenuSelect();
 
         cout << " [" << UserName << "]: ";
@@ -1397,18 +1570,20 @@ int main() {
         else if (Option == "RN") {Renombrar(fs,ss);}
         else if (Option == "MV") {Mover(fs,ss);}
         else if (Option == "RM") {Eliminar(fs,ss);}
-        else if (Option == "BCHECK") {fs.lsTrash();}
+        else if (Option == "CKB") {fs.lsTrash();}
+        else if (Option == "CN") {Contar(fs,ss);}
         else if (Option == "RS") {Restore(fs,ss);}
         else if (Option == "LS") {Ls(fs,ss);}
         else if (Option == "FR") {FullRute(fs,ss);}
-        else if (Option == "PREORD") {fs.printPreorder();}
-        else if (Option == "BDEL") {DelID(fs,ss);}
-        else if (Option == "BCLEAR") {Empty(fs);}
+        else if (Option == "PRD") {fs.printPreorder();}
+        else if (Option == "DLB") {DelID(fs,ss);}
+        else if (Option == "CLB") {Empty(fs);}
         else if (Option == "SAVE") {Guardar(fs);}
         else if (Option == "SR") {Search(fs,ss);}
         else if (Option == "HELP") {Help(fs);}
+        else if (Option == "TEST") {Test(fs,ss);}
         else if (Option == "EXIT") {cout << " [SYNE]: Adiós, " << UserName << "...\n";}
-        else {cout << "\nERROR! - Usa HELP para obtener la lista de comandos.\n";}
+        else {cout << "\nERROR! - Usa HELP para obetner la lista de comandos.\n";}
 
         if (Option != "EXIT") {Pausa();}
 
